@@ -49,13 +49,13 @@ func main() {
     })
     
     res := L.DoString(code)
-    if ! res {
+    if res != nil {
         fmt.Println("Error:",L.ToString(-1))
         os.Exit(1)    
     }
     
     res = L.DoString(setup)
-    if ! res {
+    if res != nil {
         fmt.Println("Error:",L.ToString(-1))
         os.Exit(1)    
     } else {

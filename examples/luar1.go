@@ -5,7 +5,7 @@ import "fmt"
 import "os"
 import "strings"
 import "runtime"
-import lua "github.com/stevedonovan/golua/lua51"
+import lua "github.com/aarzilli/golua/lua"
 import "github.com/stevedonovan/luar"
 
 func error(L *lua.State) {
@@ -131,7 +131,7 @@ func main() {
 
     if len(*expr) > 0 {
         res := L.DoString(*expr)
-        if ! res {
+        if res != nil {
             error(L)
         }
     }  
@@ -146,7 +146,7 @@ func main() {
     
     script := args[0]    
     res := L.DoFile(script)
-    if ! res {
+    if res !=  nil {
         error(L)
     }
 

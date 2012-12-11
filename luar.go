@@ -1,7 +1,7 @@
 package luar
 
 
-import lua "github.com/stevedonovan/golua/lua51"
+import lua "github.com/aarzilli/golua/lua"
 import "fmt"
 //import "os"
 import "reflect"
@@ -27,7 +27,7 @@ func makeValueProxy(L *lua.State, val reflect.Value,  proxyMT string) {
 	ptr := (*ValueProxy)(rawptr)
     ptr.value = val
     ptr.t = val.Type()
-    lua.LGetMetaTable(L,proxyMT)
+    L.LGetMetaTable(proxyMT)
     L.SetMetaTable(-2)
 }
 
@@ -123,7 +123,7 @@ func MakeChannel(L *lua.State) int {
 }
 
 func initializeProxies(L *lua.State) {
-    add_index := func (name string, fun lua.GoFunction) {
+    add_index := func (name string, fun lua.LuaGoFunction) {
         L.PushGoCallback(fun)
         L.SetField(-2,name)
     }
@@ -200,7 +200,7 @@ func slice__newindex (L *lua.State) int {
 
 func slicemap__len(L *lua.State) int {
     val,_ := valueOfProxy(L,1)
-    L.PushInteger(val.Len())
+    L.PushInteger(int64(val.Len()))
     return 1
 }
 
@@ -476,7 +476,7 @@ func functionArgRetTypes(funt reflect.Type) (targs, tout []reflect.Type) {
 // There are special optimized cases for functions that go from strings to strings,
 // and doubles to doubles, but otherwise Go 
 // reflection is used to provide a generic wrapper function
-func GoLuaFunc (L *lua.State, fun interface{}) lua.GoFunction {
+func GoLuaFunc (L *lua.State, fun interface{}) lua.LuaGoFunction {
     switch f := fun.(type) {
     case func(*lua.State) int: return f
     case func(string) string: return func(L *lua.State) int {
@@ -599,7 +599,7 @@ func copySliceToTable(L *lua.State) int {
         n := vslice.Len()
         L.CreateTable(n,0)
         for i := 0; i < n; i++ {
-            L.PushInteger(i+1)
+            L.PushInteger(int64(i+1))
             GoToLua(L,nil,vslice.Index(i))
             L.SetTable(-3)
         }            
