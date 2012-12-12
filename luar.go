@@ -358,7 +358,7 @@ func GoToLua (L *lua.State, t reflect.Type, val reflect.Value) {
     if t == nil {
         t = val.Type()
         if t.Kind() == reflect.Interface { // unbox interfaces!
-            val = valueOf(val.Interface)
+            val = valueOf(val.Interface())
             t = val.Type()            
         }
         proxify = false
