@@ -62,6 +62,10 @@ func unwrapProxy(L *lua.State, idx int) interface{} {
     return nil
 }
 
+func unwrapProxyValue(L *lua.State, idx int) reflect.Value{
+    return valueOf(unwrapProxy(L,idx))
+}
+
 func channel_send(L *lua.State) int {
     fmt.Println("yield send")
 
@@ -313,6 +317,28 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
     return m.Interface()
 }
 
+func CopyTableToStruct(L  *lua.State, t reflect.Type,idx int) interface{} {    
+    if t.Kind() == reflect.Ptr {
+        t = t.Elem()
+    }
+    s := reflect.New(t)  // T -> *T
+    ref := s.Elem()
+    L.PushNil()
+    if idx < 0 {
+        idx--
+    }
+    for L.Next(idx) != 0 {
+        key := L.ToString(-2)
+        f := ref.FieldByName(key)
+        if f.IsValid() {
+            val := valueOf(LuaToGo(L,f.Type(),-1))
+            f.Set(val)    
+        }
+        L.Pop(1)
+    }
+    return s.Interface()
+}
+
 // copy a Go slice to a Lua table
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
     if vslice.IsValid() && vslice.Type().Kind() == reflect.Slice {
@@ -330,6 +356,7 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
     }  
     return 2    
 }
+
 
 // copy a Go map to a Lua table
 func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
@@ -425,6 +452,8 @@ func LuaToGo (L *lua.State, t reflect.Type, idx int) interface{}{
             case lua.LUA_TTABLE: kind = reflect.Interface
             default: return NewLuaObject(L,idx)
         }
+    } else  if t.Kind() == reflect.Ptr {
+        kind = t.Elem().Kind()
     } else {
         kind = t.Kind()
     }
@@ -473,6 +502,13 @@ func LuaToGo (L *lua.State, t reflect.Type, idx int) interface{}{
     case reflect.Map: {
         if L.IsTable(idx) {
             value = CopyTableToMap(L,t,idx)
+        } else {
+            value = unwrapProxy(L,idx)
+        }
+    }
+    case reflect.Struct: {
+        if L.IsTable(idx) {
+            value = CopyTableToStruct(L,t,idx)
         } else {
             value = unwrapProxy(L,idx)
         }
