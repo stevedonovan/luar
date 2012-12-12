@@ -92,6 +92,8 @@ func bslice2string (slice []byte) string {
 
 func main() {
     L := luar.Init()
+    defer L.Close()
+    
     flag.Parse()
     
     luar.Register(L,"",luar.Map{
@@ -134,22 +136,22 @@ func main() {
         if ! res {
             error(L)
         }
+        return
     }  
     
+    script := ""
     args := flag.Args()
     if len(args) == 0 {
-        if len(*expr) == 0 {
-            fmt.Println("please supply a Lua script name")
-        }
-        return
+        script = "hello.lua"
+        fmt.Println("running hello.lua by default (can specify other file on commandline")
+    } else {
+        script = args[0]
     }
     
-    script := args[0]    
     res := L.DoFile(script)
     if ! res {
         error(L)
     }
 
-
-	L.Close();
+	
 }
