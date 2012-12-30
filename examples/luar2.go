@@ -41,27 +41,27 @@ return {
 func main() {
     L := luar.Init()
     defer L.Close()
-    
-    // arbitrary Go functions can be registered 
+
+    // arbitrary Go functions can be registered
     // to be callable from Lua
     luar.Register(L,"",luar.Map{
         "GoFun":GoFun,
     })
-    
+
     res := L.DoString(code)
-    if ! res {
-        fmt.Println("Error:",L.ToString(-1))
-        os.Exit(1)    
+    if res != nil {
+        fmt.Println("Error:",res)
+        os.Exit(1)
     }
-    
+
     res = L.DoString(setup)
-    if ! res {
-        fmt.Println("Error:",L.ToString(-1))
-        os.Exit(1)    
+    if res != nil {
+        fmt.Println("Error:",res)
+        os.Exit(1)
     } else {
         // there will be a table on the stack!
         fmt.Println("table?",L.IsTable(-1))
-        v := luar.CopyTableToMap(L,nil,-1)   
+        v := luar.CopyTableToMap(L,nil,-1)
         fmt.Println("returned map",v)
         m := v.(map[string]interface{})
         for k,v := range m {

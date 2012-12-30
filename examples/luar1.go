@@ -4,13 +4,13 @@ import "flag"
 import "fmt"
 import "os"
 import "strings"
+import "errors"
 import "runtime"
-import lua "github.com/stevedonovan/golua/lua51"
 import "github.com/stevedonovan/luar"
 
-func error(L *lua.State) {
-    fmt.Println("Error:",L.ToString(-1))
-    os.Exit(1)    
+func quit(err error) {
+    fmt.Println("Error:",err)
+    os.Exit(1)
 }
 
 var expr = flag.String("e","","expression to be evaluated")
@@ -60,7 +60,7 @@ func mapit (m map[string]int, a map[int]string) {
     }
     for k,v := range a {
         fmt.Println("int",k,v)
-    }    
+    }
 }
 
 // dispatching methods on a struct
@@ -93,9 +93,9 @@ func bslice2string (slice []byte) string {
 func main() {
     L := luar.Init()
     defer L.Close()
-    
+
     flag.Parse()
-    
+
     luar.Register(L,"",luar.Map{
         "test": test,
         "tos": tostring,
@@ -120,25 +120,25 @@ func main() {
         "go":luar.GoLua,
         "gosched":runtime.Gosched,
         "const":42,
-    })    
-    
-    
+    })
+
+
     if len(*libs) > 0 {
         L.PushString("require")
         L.PushString(*libs)
         if L.PCall(1,0,0) != 0 {
-            error(L)
+            quit(errors.New(L.ToString(-1)))
         }
     }
 
     if len(*expr) > 0 {
         res := L.DoString(*expr)
-        if ! res {
-            error(L)
+        if res != nil {
+            quit(res)
         }
         return
-    }  
-    
+    }
+
     script := ""
     args := flag.Args()
     if len(args) == 0 {
@@ -147,11 +147,11 @@ func main() {
     } else {
         script = args[0]
     }
-    
+
     res := L.DoFile(script)
-    if ! res {
-        error(L)
+    if res != nil {
+        quit(res)
     }
 
-	
+
 }

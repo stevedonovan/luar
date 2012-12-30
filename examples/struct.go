@@ -33,16 +33,16 @@ config {
 func main() {
     L := luar.Init()
     defer L.Close()
-    
-    // arbitrary Go functions can be registered 
+
+    // arbitrary Go functions can be registered
     // to be callable from Lua
     luar.Register(L,"",luar.Map{
         "config":config,
     })
-    
+
     res := L.DoString(setup)
-    if ! res {
-        fmt.Println("Error:",L.ToString(-1))
+    if res != nil {
+        fmt.Println("Error:",res)
     }
 
 }
