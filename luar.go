@@ -373,6 +373,11 @@ func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 // If we haven't been given a concrete type, use the type of the value
 // and unbox any interfaces.
 func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
+	if !val.IsValid() {
+		L.PushNil()
+		return
+	}
+
 	proxify := true
 	if t == nil {
 		t = val.Type()
