@@ -3,7 +3,6 @@ package luar
 import lua "github.com/aarzilli/golua/lua"
 import "fmt"
 import "strings"
-import "errors"
 
 //import "os"
 import "reflect"
