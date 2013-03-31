@@ -720,13 +720,11 @@ func (lo *LuaObject) Call(args ...interface{}) (res interface{}, err error) {
 	for _, arg := range args { // push the args
 		GoToLua(L, nil, valueOf(arg))
 	}
-	ret := L.PCall(len(args), 1, 0)
-	if ret == 0 { // cool
+	err = L.Call(len(args), 1)
+	if err == nil {
 		res = LuaToGo(L, nil, -1)
-	} else {
-		err = errors.New(L.ToString(-1))
+		L.Pop(1)
 	}
-	L.Pop(1)
 	return
 }
 
