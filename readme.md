@@ -55,7 +55,7 @@ The first convenience is that ordinary Go functions may be registered directly:
 
         luar.Register(L,"",luar.Map{
             "Print":fmt.Println,
-            "MSG","hello",  // can also register constants
+            "MSG":"hello",  // can also register constants
         })
 
         L.DoString(test)
