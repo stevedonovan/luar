@@ -4,7 +4,6 @@ import "flag"
 import "fmt"
 import "os"
 import "strings"
-import "errors"
 import "runtime"
 import "github.com/stevedonovan/luar"
 
@@ -126,8 +125,9 @@ func main() {
     if len(*libs) > 0 {
         L.PushString("require")
         L.PushString(*libs)
-        if L.PCall(1,0,0) != 0 {
-            quit(errors.New(L.ToString(-1)))
+		err := L.Call(1,0)
+        if err != nil {
+            quit(err)
         }
     }
 
