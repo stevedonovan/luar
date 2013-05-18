@@ -612,10 +612,12 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 	targs, tout := functionArgRetTypes(funt)
 	return func(L *lua.State) int {
 		var lastT reflect.Type
+        orig_targs := targs
 		isVariadic := funt.IsVariadic()
 		if isVariadic {
-			lastT = targs[len(targs)-1].Elem()
-			targs = targs[0 : len(targs)-1]
+            n := len(targs)
+			lastT = targs[n-1].Elem()
+			targs = targs[0 : n-1]
 		}
 		args := make([]reflect.Value, len(targs))
 		for i, t := range targs {
@@ -628,6 +630,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 				val := valueOf(LuaToGo(L, lastT, i))
 				args = append(args, val)
 			}
+            targs = orig_targs
 		}
 		resv := funv.Call(args)
 		for i, val := range resv {
