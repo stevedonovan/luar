@@ -1,7 +1,6 @@
 package luar
 
 import lua "github.com/aarzilli/golua/lua"
-import "fmt"
 import "strings"
 
 //import "os"
@@ -65,8 +64,6 @@ func unwrapProxyValue(L *lua.State, idx int) reflect.Value {
 }
 
 func channel_send(L *lua.State) int {
-	fmt.Println("yield send")
-
 	L.PushValue(2)
 	L.PushValue(1)
 	L.PushBoolean(true)
@@ -78,8 +75,6 @@ func channel_send(L *lua.State) int {
 }
 
 func channel_recv(L *lua.State) int {
-	fmt.Println("yield recv")
-
 	L.PushValue(1)
 	L.PushBoolean(false)
 	return L.Yield(2)
@@ -101,7 +96,7 @@ func GoLua(L *lua.State) int {
 		for res != 0 {
 			if res == 2 {
 				emsg := LT.ToString(-1)
-				fmt.Println("error", emsg)
+				RaiseError(LT,emsg)
 			}
 			ch, t := valueOfProxy(LT, -2)
 
@@ -163,6 +158,19 @@ func initializeProxies(L *lua.State) {
 	flagValue()
 }
 
+func RaiseError(L *lua.State,msg string) {
+    L.Where(1)
+    pos := L.ToString(-1)
+    L.Pop(1)
+    L.MustDoString("error '"+pos + " " +msg+"'")
+}
+
+func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
+    if ! v.IsValid() {
+        RaiseError(L,"no " + what + " named `" + name + "` for type " + parent.Type().String())
+    }
+}
+
 func slice_slice(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	i1, i2 := L.ToInteger(2), L.ToInteger(3)
@@ -175,7 +183,10 @@ func slice__index(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	if L.IsNumber(2) {
 		idx := L.ToInteger(2)
-		ret := slice.Index(idx - 1)
+        if idx < 1 ||    idx > slice.Len() {
+            RaiseError(L,"slice get: index out of range")
+        }
+        ret := slice.Index(idx - 1)
 		GoToLua(L, ret.Type(), ret)
 	} else {
 		name := L.ToString(2)
@@ -183,7 +194,7 @@ func slice__index(L *lua.State) int {
 		case "Slice":
 			L.PushGoFunction(slice_slice)
 		default:
-			fmt.Println("unknown slice method")
+			RaiseError(L,"unknown slice method")
 		}
 	}
 	return 1
@@ -193,6 +204,9 @@ func slice__newindex(L *lua.State) int {
 	slice, t := valueOfProxy(L, 1)
 	idx := L.ToInteger(2)
 	val := LuaToGo(L, t.Elem(), 3)
+    if idx < 1 || idx > slice.Len() {
+        RaiseError(L,"slice set: index out of range")
+    }
 	slice.Index(idx - 1).Set(valueOf(val))
 	return 0
 }
@@ -219,13 +233,27 @@ func map__newindex(L *lua.State) int {
 	return 0
 }
 
+
 func callGoMethod(L *lua.State, name string, st reflect.Value) {
 	ret := st.MethodByName(name)
 	if !ret.IsValid() {
-		fmt.Println("whoops")
+        T := st.Type()
+        // Could not resolve this method. Perhaps it's defined on the pointer?
+        if T.Kind() !=reflect.Ptr {
+            if st.CanAddr() { // easy if we can get a pointer directly
+                st = st.Addr()
+            }  else { // otherwise have to create and initialize one...
+                VP := reflect.New(T)
+                VP.Elem().Set(st)
+                st = VP
+            }
+        }
+        ret = st.MethodByName(name)
+        assertValid(L,ret,st,name,"method")
 	}
 	L.PushGoFunction(GoLuaFunc(L, ret))
 }
+
 
 func struct__index(L *lua.State) int {
 	st, t := valueOfProxy(L, 1)
@@ -257,6 +285,7 @@ func struct__newindex(L *lua.State) int {
 		st = st.Elem()
 	}
 	field := st.FieldByName(name)
+    assertValid(L,field,st,name,"field")
 	val := LuaToGo(L, field.Type(), 3)
 	field.Set(valueOf(val))
 	return 0
@@ -561,7 +590,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 	default:
 		{
-			fmt.Println("unhandled type", t)
+			RaiseError(L,"unhandled type " + t.String())
 			value = 20
 		}
 
