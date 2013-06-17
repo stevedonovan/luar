@@ -641,11 +641,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 	targs, tout := functionArgRetTypes(funt)
 	return func(L *lua.State) int {
 		var lastT reflect.Type
-<<<<<<< HEAD
         orig_targs := targs 
-=======
-        orig_targs := targs
->>>>>>> f1c3ca73a7b2e390695242e882a53717048096ae
 		isVariadic := funt.IsVariadic()
 		if isVariadic {
             n := len(targs)
