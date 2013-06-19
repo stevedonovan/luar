@@ -339,6 +339,7 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	return m.Interface()
 }
 
+// copy matching Lua table entries to a struct
 func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -721,11 +722,25 @@ type LuaObject struct {
 	Type string
 }
 
-// index the Lua object using the key 'idx'
-func (lo *LuaObject) Get(idx interface{}) interface{} {
+// index the Lua object using a string key, returning Go equivalent
+func (lo *LuaObject) Get(key string) interface{} {
+	lo.Push() // the table
+    Lookup(lo.L,key,-1)
+	return LuaToGo(lo.L, nil, -1)
+}
+
+// index the Lua object using a string key, returning Lua object
+func (lo *LuaObject) GetObject(key string) *LuaObject {
+	lo.Push() // the table
+    Lookup(lo.L,key,-1)
+    return NewLuaObject(lo.L,-1)
+}
+
+// index the Lua object using integer index
+func (lo *LuaObject) Geti(idx int64) interface{} {
 	L := lo.L
 	lo.Push() // the table
-	GoToLua(L, nil, valueOf(idx))
+    L.PushInteger(idx)
 	L.GetTable(-2)
 	val := LuaToGo(L, nil, -1)
 	L.Pop(1) // the  table
@@ -825,6 +840,9 @@ func Lookup(L *lua.State, path string, idx int) {
 	for _, field := range parts {
 		L.GetField(-1, field)
 		L.Remove(-2) // remove table
+        if L.IsNil(-1) {
+            break
+        }
 	}
 }
 

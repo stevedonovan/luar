@@ -123,6 +123,10 @@ func NewTestV (name string, age int) Test {
     return Test{name,age}
 }
 
+func UnpacksTest (t Test) (string,int) {
+    return t.Name, t.Age
+}
+
 
 const accessing_structs = `
 local t = NewTest("Alice",16)
@@ -137,6 +141,9 @@ assert(t.GetName() == 'Caterpillar')
 t = NewTestV("Alfred",24)
 assert(t.GetName() == 'Alfred')
 assert(t.Age == 24)
+local name,age = UnpacksTest (t) --{Name = 'Bob', Age = 24}
+assert (name == 'Alfred' and age == 24)
+print 'finis'
 `
 
 func byteBuffer(sz int) []byte {
@@ -160,6 +167,7 @@ func Test_callingStructs(t *testing.T) {
     Register(L,"",Map{
 		"NewTest":NewTest,
 		"NewTestV":NewTestV,
+        "UnpacksTest":UnpacksTest,
 		"OsOpen":os.Open,
 		"byteBuffer":byteBuffer,
     })	
@@ -219,6 +227,13 @@ func Test_parsingConfig(t *testing.T) {
 	lo := NewLuaObject(L,-1)
 	assertEq(t,"lbag",lo.Get("baggins"),true)
 	assertEq(t,"lname",lo.Get("name"),"dumbo")
+    // can get the field itself as a Lua object, and so forth
+    opts := lo.GetObject("options")
+    assertEq(t,"opts",opts.Get("leave"),true)
+    // note that these Get methods understand nested fields ('chains')
+    assertEq(t,"chain",lo.Get("options.leave"),true)
+    markd := lo.GetObject("marked")
+    //? fmt.Println(markd.Geti(1))
 	iter := lo.Iter()
 	for iter.Next() {
 		println("key",iter.Key.(string))
