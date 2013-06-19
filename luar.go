@@ -162,7 +162,8 @@ func RaiseError(L *lua.State,msg string) {
     L.Where(1)
     pos := L.ToString(-1)
     L.Pop(1)
-    L.MustDoString("error '"+pos + " " +msg+"'")
+    //L.MustDoString("error '"+pos + " " +msg+"'")
+	panic(L.NewError(pos + " " +msg))
 }
 
 func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
@@ -237,7 +238,7 @@ func map__newindex(L *lua.State) int {
 func callGoMethod(L *lua.State, name string, st reflect.Value) {
 	ret := st.MethodByName(name)
 	if !ret.IsValid() {
-        T := st.Type()
+        T := st.Type()		
         // Could not resolve this method. Perhaps it's defined on the pointer?
         if T.Kind() !=reflect.Ptr {
             if st.CanAddr() { // easy if we can get a pointer directly
@@ -405,23 +406,21 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
 		L.PushNil()
 		return
 	}
-
 	proxify := true
 	if t == nil {
 		t = val.Type()
-		if t.Kind() == reflect.Interface { // unbox interfaces!
-			val = valueOf(val.Interface())
-			t = val.Type()
-		}
 		proxify = false
+	}
+	if t.Kind() == reflect.Interface && ! val.IsNil(){ // unbox interfaces!
+		val = valueOf(val.Interface())
+		t = val.Type()
 	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-
+	
 	switch t.Kind() {
-	case reflect.Float64:
-	case reflect.Float32:
+	case reflect.Float64, reflect.Float32:
 		{
 			L.PushNumber(val.Float())
 		}
