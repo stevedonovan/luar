@@ -341,7 +341,8 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 
 // copy matching Lua table entries to a struct
 func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
-	if t.Kind() == reflect.Ptr {
+	was_ptr := t.Kind() == reflect.Ptr
+	if was_ptr {
 		t = t.Elem()
 	}
 	s := reflect.New(t) // T -> *T
@@ -359,7 +360,11 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		L.Pop(1)
 	}
-	return s.Interface()
+	if was_ptr {
+		return s.Interface()
+	} else {
+		return s.Elem().Interface()
+	}
 }
 
 // copy a Go slice to a Lua table
@@ -617,6 +622,11 @@ func functionArgRetTypes(funt reflect.Type) (targs, tout []reflect.Type) {
 // and doubles to doubles, but otherwise Go
 // reflection is used to provide a generic wrapper function
 func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
+	defer func() {
+		if x := recover(); x != nil {
+			RaiseError(L,"error calling Go function " + x.(error).Error())
+		}
+	}()
 	switch f := fun.(type) {
 	case func(*lua.State) int:
 		return f
@@ -654,6 +664,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 		for i, t := range targs {
 			val := LuaToGo(L, t, i+1)
 			args[i] = valueOf(val)
+			//println(i,args[i].String())
 		}
 		if isVariadic {
 			n := L.GetTop()

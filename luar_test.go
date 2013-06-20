@@ -141,8 +141,8 @@ assert(t.GetName() == 'Caterpillar')
 t = NewTestV("Alfred",24)
 assert(t.GetName() == 'Alfred')
 assert(t.Age == 24)
-local name,age = UnpacksTest (t) --{Name = 'Bob', Age = 24}
-assert (name == 'Alfred' and age == 24)
+local name,age = UnpacksTest {Name = 'Bob', Age = 22}
+assert (name == 'Bob' and age == 22)
 print 'finis'
 `
 
@@ -172,7 +172,7 @@ func Test_callingStructs(t *testing.T) {
 		"byteBuffer":byteBuffer,
     })	
 
-	code := calling_interface  + accessing_structs
+	code :=  accessing_structs + calling_interface
 	err := L.DoString(code)
     if err != nil {
 		t.Error(err)
