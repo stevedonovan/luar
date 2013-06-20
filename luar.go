@@ -495,6 +495,8 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 			kind = reflect.String
 		case lua.LUA_TTABLE:
 			kind = reflect.Interface
+		case lua.LUA_TNUMBER:
+			kind = reflect.Float64
 		default:
 			return NewLuaObject(L, idx)
 		}

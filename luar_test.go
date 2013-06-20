@@ -230,10 +230,10 @@ func Test_parsingConfig(t *testing.T) {
     // can get the field itself as a Lua object, and so forth
     opts := lo.GetObject("options")
     assertEq(t,"opts",opts.Get("leave"),true)
-    // note that these Get methods understand nested fields ('chains')
+   // note that these Get methods understand nested fields ('chains')
     assertEq(t,"chain",lo.Get("options.leave"),true)
     markd := lo.GetObject("marked")
-    //? fmt.Println(markd.Geti(1))
+	assertEq(t,"marked1",markd.Geti(1),1.0)
 	iter := lo.Iter()
 	for iter.Next() {
 		println("key",iter.Key.(string))
