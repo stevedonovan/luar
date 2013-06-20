@@ -1,0 +1,1 @@
+for i in *.go; do go run $i; done

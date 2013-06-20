@@ -4,6 +4,13 @@ import "testing"
 import "strconv"
 import "os"
 
+// I _still_ like asserts ;)
+func assertEq(t *testing.T,msg string,v1,v2 interface{}) {
+	if v1 != v2 {
+		t.Error("were not equal: " + msg)
+	}
+}
+
 func fun2 (x float32, a string) (float32,string) {
 	return x,a
 }
@@ -193,12 +200,6 @@ return {
 }
 `
 
-func assertEq(t *testing.T,msg string,v1,v2 interface{}) {
-	if v1 != v2 {
-		t.Error("were not equal: " + msg)
-	}
-}
-
 func Test_parsingConfig(t *testing.T) {
     L := Init()
     defer L.Close()
@@ -257,10 +258,12 @@ func Test_callingLua(t *testing.T) {
 	// the very versatile string.gsub function
 	// Note a subtlety: for Lua functions called like this, maps are auto-converted to tables.
     gsub := NewLuaObjectFromName(L,"string.gsub")
-    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",Map {
+	// this is a Lua table...
+	replacements := NewLuaObjectFromValue(L,Map {
         "NAME": "Dolly",
         "HOME": "where you belong",
     })
+    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",replacements)
 	if res == nil { t.Error(err) }
 	assertEq(t,"hello",res,"hello Dolly go where you belong")
 
@@ -272,6 +275,8 @@ func Test_callingLua(t *testing.T) {
 	fun := NewLuaObjectFromName(L,"Libs.fun")
 	res,err = fun.Call("hello",42)
 	assertEq(t,"fun",res,"ok")
+	
+	println("that's all folks!")
 
 }
 

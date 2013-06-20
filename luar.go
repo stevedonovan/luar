@@ -466,6 +466,8 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
 		{
 			if v, ok := val.Interface().(error); ok {
 				L.PushString(v.Error())
+			} else if v, ok := val.Interface().(*LuaObject); ok {
+				v.Push()
 			} else {
 				makeValueProxy(L, val, STRUCT_META)
 			}
@@ -826,7 +828,7 @@ func (ti *LuaTableIter) Next() bool {
 	return true
 }
 
-// create a new LuaObject using the given state and stack index.
+// a new LuaObject from stack index.
 func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	tp := L.LTypename(idx)
 	L.PushValue(idx)
@@ -834,15 +836,22 @@ func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	return &LuaObject{L, ref, tp}
 }
 
-// create a new LuaObject using the given state and global qualified name
+// a new LuaObject from global qualified name
 func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 	Lookup(L, path, 0)
 	return NewLuaObject(L, -1)
 }
 
+// a new LuaObject from a Go value
+func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
+	GoToLua(L,nil,valueOf(val))
+	return NewLuaObject(L, -1)
+}
+
 // look up a Lua value by its full name. If idx is 0, then this name
 // is assumed to start in the global table, e.g. "string.gsub".
-// With non-zero idx, can be used to look up subfields of a table
+// With non-zero idx, can be used to look up subfields of a table.
+// It terminates with a nil value if we cannot continue the lookup...
 func Lookup(L *lua.State, path string, idx int) {
 	parts := strings.Split(path, ".")
 	if idx != 0 {
