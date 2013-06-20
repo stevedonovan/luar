@@ -5,53 +5,52 @@ import "strconv"
 import "os"
 
 // I _still_ like asserts ;)
-func assertEq(t *testing.T,msg string,v1,v2 interface{}) {
+func assertEq(t *testing.T, msg string, v1, v2 interface{}) {
 	if v1 != v2 {
 		t.Error("were not equal: " + msg)
 	}
 }
 
-func fun2 (x float32, a string) (float32,string) {
-	return x,a
+func fun2(x float32, a string) (float32, string) {
+	return x, a
 }
 
-func sum (args []float64) float64 {
+func sum(args []float64) float64 {
 	res := 0.0
-	for _,val := range args {
+	for _, val := range args {
 		res += val
 	}
 	return res
 }
 
-func sumv (args ...float64) float64 {
+func sumv(args ...float64) float64 {
 	return sum(args)
 }
 
 // [10,20] -> {'0':10,'1':20}
-func squares (args []int) (res map[string]int) {
-    res = make(map[string]int)
-    for i,val := range args {
-        res[strconv.Itoa(i)] = val*val
-    }
-    return
-}
-
-func keys (m map[string]interface{}) (res []string){
-	res = make([]string,0)	
-	for k,_ := range m {
-		res = append(res,k)
+func squares(args []int) (res map[string]int) {
+	res = make(map[string]int)
+	for i, val := range args {
+		res[strconv.Itoa(i)] = val * val
 	}
 	return
 }
 
-func values (m map[string]interface{}) (res []interface{}){
-	res = make([]interface{},0)	
-	for _,v:= range m {
-		res = append(res,v)
+func keys(m map[string]interface{}) (res []string) {
+	res = make([]string, 0)
+	for k, _ := range m {
+		res = append(res, k)
 	}
 	return
 }
 
+func values(m map[string]interface{}) (res []interface{}) {
+	res = make([]interface{}, 0)
+	for _, v := range m {
+		res = append(res, v)
+	}
+	return
+}
 
 const calling = `
 --// Calling Go functions from Lua //////
@@ -85,28 +84,29 @@ do return end
 v = luar.slice2table(v)
 assert( (v[1]==1 and v[2]==2) or (v[2]==1 and v[1]==2) )
 `
-func Test_callingGoFun (t *testing.T) {
-    L := Init()
-    defer L.Close()
 
-    // arbitrary Go functions can be registered
-    // to be callable from Lua; here the  functions are put into the global table
-    Register(L,"",Map{
-		"fun2":fun2,
-		"sum":sum,
-		"sumv":sumv,
-        "squares":squares,
-    })
-	
+func Test_callingGoFun(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	// arbitrary Go functions can be registered
+	// to be callable from Lua; here the  functions are put into the global table
+	Register(L, "", Map{
+		"fun2":    fun2,
+		"sum":     sum,
+		"sumv":    sumv,
+		"squares": squares,
+	})
+
 	// can register them as a Lua table for namespacing...
-	Register(L,"gu",Map{
-		"keys":keys,
-		"values":values,
+	Register(L, "gu", Map{
+		"keys":   keys,
+		"values": values,
 	})
 
 	code := calling
 	err := L.DoString(code)
-    if err != nil {
+	if err != nil {
 		t.Error(err)
 	}
 }
@@ -114,26 +114,25 @@ func Test_callingGoFun (t *testing.T) {
 // dispatching methods on a struct
 
 type Test struct {
-    Name string
-    Age int
+	Name string
+	Age  int
 }
 
 func (self *Test) GetName() string {
-    return self.Name
+	return self.Name
 }
 
-func NewTest (name string, age int) *Test {
-    return &Test{name,age}
+func NewTest(name string, age int) *Test {
+	return &Test{name, age}
 }
 
-func NewTestV (name string, age int) Test {
-    return Test{name,age}
+func NewTestV(name string, age int) Test {
+	return Test{name, age}
 }
 
-func UnpacksTest (t Test) (string,int) {
-    return t.Name, t.Age
+func UnpacksTest(t Test) (string, int) {
+	return t.Name, t.Age
 }
-
 
 const accessing_structs = `
 local t = NewTest("Alice",16)
@@ -154,7 +153,7 @@ print 'finis'
 `
 
 func byteBuffer(sz int) []byte {
-	return make([]byte,sz)
+	return make([]byte, sz)
 }
 
 const calling_interface = `
@@ -168,20 +167,20 @@ f.Close()
 `
 
 func Test_callingStructs(t *testing.T) {
-    L := Init()
-    defer L.Close()
+	L := Init()
+	defer L.Close()
 
-    Register(L,"",Map{
-		"NewTest":NewTest,
-		"NewTestV":NewTestV,
-        "UnpacksTest":UnpacksTest,
-		"OsOpen":os.Open,
-		"byteBuffer":byteBuffer,
-    })	
+	Register(L, "", Map{
+		"NewTest":     NewTest,
+		"NewTestV":    NewTestV,
+		"UnpacksTest": UnpacksTest,
+		"OsOpen":      os.Open,
+		"byteBuffer":  byteBuffer,
+	})
 
-	code :=  accessing_structs + calling_interface
+	code := accessing_structs + calling_interface
 	err := L.DoString(code)
-    if err != nil {
+	if err != nil {
 		t.Error(err)
 	}
 }
@@ -201,83 +200,92 @@ return {
 `
 
 func Test_parsingConfig(t *testing.T) {
-    L := Init()
-    defer L.Close()
+	L := Init()
+	defer L.Close()
 
 	err := L.DoString(config)
-    if err != nil {
+	if err != nil {
 		t.Error(err)
 	}
 	// there will be a table on the Lua stack
-	if ! L.IsTable(-1) { t.Error("did not return a table") }
-	v := CopyTableToMap(L,nil,-1)
+	if !L.IsTable(-1) {
+		t.Error("did not return a table")
+	}
+	v := CopyTableToMap(L, nil, -1)
 	// extract table from the returned interface...
 	m := v.(map[string]interface{})
-	assertEq(t,"baggins",m["baggins"],true)
-	assertEq(t,"name",m["name"],"dumbo")
+	assertEq(t, "baggins", m["baggins"], true)
+	assertEq(t, "name", m["name"], "dumbo")
 	marked := m["marked"].([]interface{})
-	assertEq(t,"slice len",len(marked),2)
+	assertEq(t, "slice len", len(marked), 2)
 	// a little gotcha here - Lua numbers are doubles..
-	assertEq(t,"val",marked[0],1.0)
-	assertEq(t,"val",marked[1],2.0)
+	assertEq(t, "val", marked[0], 1.0)
+	assertEq(t, "val", marked[1], 2.0)
 	options := m["options"].(map[string]interface{})
-	assertEq(t,"leave",options["leave"],true)
+	assertEq(t, "leave", options["leave"], true)
 
 	// another way to do this. using LuaObject to manipulate the table
 	L.DoString(config)
-	lo := NewLuaObject(L,-1)
-	assertEq(t,"lbag",lo.Get("baggins"),true)
-	assertEq(t,"lname",lo.Get("name"),"dumbo")
-    // can get the field itself as a Lua object, and so forth
-    opts := lo.GetObject("options")
-    assertEq(t,"opts",opts.Get("leave"),true)
-   // note that these Get methods understand nested fields ('chains')
-    assertEq(t,"chain",lo.Get("options.leave"),true)
-    markd := lo.GetObject("marked")
-	assertEq(t,"marked1",markd.Geti(1),1.0)
+	lo := NewLuaObject(L, -1)
+	assertEq(t, "lbag", lo.Get("baggins"), true)
+	assertEq(t, "lname", lo.Get("name"), "dumbo")
+	// can get the field itself as a Lua object, and so forth
+	opts := lo.GetObject("options")
+	assertEq(t, "opts", opts.Get("leave"), true)
+	// note that these Get methods understand nested fields ('chains')
+	assertEq(t, "chain", lo.Get("options.leave"), true)
+	markd := lo.GetObject("marked")
+	assertEq(t, "marked1", markd.Geti(1), 1.0)
 	iter := lo.Iter()
 	for iter.Next() {
-		println("key",iter.Key.(string))
+		println("key", iter.Key.(string))
 	}
-	
+
 }
 
 const luaf = `
 Libs = {}
-function Libs.fun(s,i)
+function Libs.fun(s,i,t,m)
 	assert(s == 'hello')
 	assert(i == 42)
+	--//note that these chaps are coming across as tables, not proxies
+	assert(type(t) == 'table' and t[1] == 42)
+	assert(type(m) == 'table' and m.name == 'Joe')
 	return 'ok'
 end
 `
 
 func Test_callingLua(t *testing.T) {
-    L := Init()
-    defer L.Close()
-	
-	// the very versatile string.gsub function
-	// Note a subtlety: for Lua functions called like this, maps are auto-converted to tables.
-    gsub := NewLuaObjectFromName(L,"string.gsub")
-	// this is a Lua table...
-	replacements := NewLuaObjectFromValue(L,Map {
-        "NAME": "Dolly",
-        "HOME": "where you belong",
-    })
-    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",replacements)
-	if res == nil { t.Error(err) }
-	assertEq(t,"hello",res,"hello Dolly go where you belong")
+	L := Init()
+	defer L.Close()
 
-	err = L.DoString(luaf)
-    if err != nil {
+	// the very versatile string.gsub function
+	gsub := NewLuaObjectFromName(L, "string.gsub")
+	// this is a Lua table... copies Go object, doesn't create proxy
+	replacements := NewLuaObjectFromValue(L, Map{
+		"NAME": "Dolly",
+		"HOME": "where you belong",
+	})
+	// Note a subtlety: for Lua functions called like this, maps are auto-converted to tables.
+	// we _could_ directly pass the map here, but for repeated calls this avoids
+	// the constant creation of Go maps and Lua tables.
+	res, err := gsub.Call("hello $NAME go $HOME", "%$(%u+)", replacements)
+	if res == nil {
 		t.Error(err)
 	}
-	
-	fun := NewLuaObjectFromName(L,"Libs.fun")
-	res,err = fun.Call("hello",42)
-	assertEq(t,"fun",res,"ok")
-	
+	assertEq(t, "hello", res, "hello Dolly go where you belong")
+
+	err = L.DoString(luaf)
+	if err != nil {
+		t.Error(err)
+	}
+
+	fun := NewLuaObjectFromName(L, "Libs.fun")
+	res, err = fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
+		"name": "Joe",
+	})
+	assertEq(t, "fun", res, "ok")
+
 	println("that's all folks!")
 
 }
-
-

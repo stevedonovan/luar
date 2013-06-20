@@ -1,13 +1,56 @@
+/* luar provides a more convenient way to access Lua from Go, using
+ Alessandro Arzilli's  golua (https://github.com/aarzilli/golua).
+ Plain Go functions can be registered with luar and they will be called by reflection;
+ methods on Go structs likewise.
+
+ package main
+
+import "fmt"
+import "github.com/stevedonovan/luar"
+
+const test = `
+for i = 1,10 do
+    Print(MSG,i)
+end
+`
+
+func main() {
+    L := luar.Init()
+    defer L.Close()
+
+    luar.Register(L,"",luar.Map{
+        "Print":fmt.Println,
+        "MSG":"hello",  // can also register constants
+    })
+
+    L.DoString(test)
+
+Go types like slices, maps and structs are passed over as Lua proxy objects,
+or alternatively copied as tables.
+
+*/
 package luar
 
 import lua "github.com/aarzilli/golua/lua"
 import "strings"
-
-//import "os"
 import "reflect"
 import "unsafe"
 
-// Lua proxy objects for Slices and Maps
+// raise a Lua error from Go code
+func RaiseError(L *lua.State, msg string) {
+	L.Where(1)
+	pos := L.ToString(-1)
+	L.Pop(1)
+	panic(L.NewError(pos + " " + msg))
+}
+
+func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
+	if !v.IsValid() {
+		RaiseError(L, "no "+what+" named `"+name+"` for type "+parent.Type().String())
+	}
+}
+
+// Lua proxy objects for Slices, Maps and Structs
 type ValueProxy struct {
 	value reflect.Value
 	t     reflect.Type
@@ -96,7 +139,7 @@ func GoLua(L *lua.State) int {
 		for res != 0 {
 			if res == 2 {
 				emsg := LT.ToString(-1)
-				RaiseError(LT,emsg)
+				RaiseError(LT, emsg)
 			}
 			ch, t := valueOfProxy(LT, -2)
 
@@ -158,20 +201,6 @@ func initializeProxies(L *lua.State) {
 	flagValue()
 }
 
-func RaiseError(L *lua.State,msg string) {
-    L.Where(1)
-    pos := L.ToString(-1)
-    L.Pop(1)
-    //L.MustDoString("error '"+pos + " " +msg+"'")
-	panic(L.NewError(pos + " " +msg))
-}
-
-func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
-    if ! v.IsValid() {
-        RaiseError(L,"no " + what + " named `" + name + "` for type " + parent.Type().String())
-    }
-}
-
 func slice_slice(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	i1, i2 := L.ToInteger(2), L.ToInteger(3)
@@ -184,10 +213,10 @@ func slice__index(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	if L.IsNumber(2) {
 		idx := L.ToInteger(2)
-        if idx < 1 ||    idx > slice.Len() {
-            RaiseError(L,"slice get: index out of range")
-        }
-        ret := slice.Index(idx - 1)
+		if idx < 1 || idx > slice.Len() {
+			RaiseError(L, "slice get: index out of range")
+		}
+		ret := slice.Index(idx - 1)
 		GoToLua(L, ret.Type(), ret)
 	} else {
 		name := L.ToString(2)
@@ -195,7 +224,7 @@ func slice__index(L *lua.State) int {
 		case "Slice":
 			L.PushGoFunction(slice_slice)
 		default:
-			RaiseError(L,"unknown slice method")
+			RaiseError(L, "unknown slice method")
 		}
 	}
 	return 1
@@ -205,9 +234,9 @@ func slice__newindex(L *lua.State) int {
 	slice, t := valueOfProxy(L, 1)
 	idx := L.ToInteger(2)
 	val := LuaToGo(L, t.Elem(), 3)
-    if idx < 1 || idx > slice.Len() {
-        RaiseError(L,"slice set: index out of range")
-    }
+	if idx < 1 || idx > slice.Len() {
+		RaiseError(L, "slice set: index out of range")
+	}
 	slice.Index(idx - 1).Set(valueOf(val))
 	return 0
 }
@@ -234,27 +263,25 @@ func map__newindex(L *lua.State) int {
 	return 0
 }
 
-
 func callGoMethod(L *lua.State, name string, st reflect.Value) {
 	ret := st.MethodByName(name)
 	if !ret.IsValid() {
-        T := st.Type()		
-        // Could not resolve this method. Perhaps it's defined on the pointer?
-        if T.Kind() !=reflect.Ptr {
-            if st.CanAddr() { // easy if we can get a pointer directly
-                st = st.Addr()
-            }  else { // otherwise have to create and initialize one...
-                VP := reflect.New(T)
-                VP.Elem().Set(st)
-                st = VP
-            }
-        }
-        ret = st.MethodByName(name)
-        assertValid(L,ret,st,name,"method")
+		T := st.Type()
+		// Could not resolve this method. Perhaps it's defined on the pointer?
+		if T.Kind() != reflect.Ptr {
+			if st.CanAddr() { // easy if we can get a pointer directly
+				st = st.Addr()
+			} else { // otherwise have to create and initialize one...
+				VP := reflect.New(T)
+				VP.Elem().Set(st)
+				st = VP
+			}
+		}
+		ret = st.MethodByName(name)
+		assertValid(L, ret, st, name, "method")
 	}
 	L.PushGoFunction(GoLuaFunc(L, ret))
 }
-
 
 func struct__index(L *lua.State) int {
 	st, t := valueOfProxy(L, 1)
@@ -286,7 +313,7 @@ func struct__newindex(L *lua.State) int {
 		st = st.Elem()
 	}
 	field := st.FieldByName(name)
-    assertValid(L,field,st,name,"field")
+	assertValid(L, field, st, name, "field")
 	val := LuaToGo(L, field.Type(), 3)
 	field.Set(valueOf(val))
 	return 0
@@ -417,14 +444,14 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
 		t = val.Type()
 		proxify = false
 	}
-	if t.Kind() == reflect.Interface && ! val.IsNil(){ // unbox interfaces!
+	if t.Kind() == reflect.Interface && !val.IsNil() { // unbox interfaces!
 		val = valueOf(val.Interface())
 		t = val.Type()
 	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	
+
 	switch t.Kind() {
 	case reflect.Float64, reflect.Float32:
 		{
@@ -599,7 +626,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 	default:
 		{
-			RaiseError(L,"unhandled type " + t.String())
+			RaiseError(L, "unhandled type "+t.String())
 			value = 20
 		}
 
@@ -626,7 +653,7 @@ func functionArgRetTypes(funt reflect.Type) (targs, tout []reflect.Type) {
 func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 	defer func() {
 		if x := recover(); x != nil {
-			RaiseError(L,"error calling Go function " + x.(error).Error())
+			RaiseError(L, "error calling Go function "+x.(error).Error())
 		}
 	}()
 	switch f := fun.(type) {
@@ -655,10 +682,10 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 	targs, tout := functionArgRetTypes(funt)
 	return func(L *lua.State) int {
 		var lastT reflect.Type
-        orig_targs := targs 
+		orig_targs := targs
 		isVariadic := funt.IsVariadic()
 		if isVariadic {
-            n := len(targs)
+			n := len(targs)
 			lastT = targs[n-1].Elem()
 			targs = targs[0 : n-1]
 		}
@@ -674,7 +701,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 				val := valueOf(LuaToGo(L, lastT, i))
 				args = append(args, val)
 			}
-            targs = orig_targs
+			targs = orig_targs
 		}
 		resv := funv.Call(args)
 		for i, val := range resv {
@@ -740,22 +767,22 @@ type LuaObject struct {
 // index the Lua object using a string key, returning Go equivalent
 func (lo *LuaObject) Get(key string) interface{} {
 	lo.Push() // the table
-    Lookup(lo.L,key,-1)
+	Lookup(lo.L, key, -1)
 	return LuaToGo(lo.L, nil, -1)
 }
 
 // index the Lua object using a string key, returning Lua object
 func (lo *LuaObject) GetObject(key string) *LuaObject {
 	lo.Push() // the table
-    Lookup(lo.L,key,-1)
-    return NewLuaObject(lo.L,-1)
+	Lookup(lo.L, key, -1)
+	return NewLuaObject(lo.L, -1)
 }
 
 // index the Lua object using integer index
 func (lo *LuaObject) Geti(idx int64) interface{} {
 	L := lo.L
 	lo.Push() // the table
-    L.PushInteger(idx)
+	L.PushInteger(idx)
 	L.GetTable(-2)
 	val := LuaToGo(L, nil, -1)
 	L.Pop(1) // the  table
@@ -844,7 +871,7 @@ func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 
 // a new LuaObject from a Go value
 func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
-	GoToLua(L,nil,valueOf(val))
+	GoToLua(L, nil, valueOf(val))
 	return NewLuaObject(L, -1)
 }
 
@@ -862,9 +889,9 @@ func Lookup(L *lua.State, path string, idx int) {
 	for _, field := range parts {
 		L.GetField(-1, field)
 		L.Remove(-2) // remove table
-        if L.IsNil(-1) {
-            break
-        }
+		if L.IsNil(-1) {
+			break
+		}
 	}
 }
 
