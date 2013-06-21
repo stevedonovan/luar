@@ -151,9 +151,15 @@ local name,age = UnpacksTest {Name = 'Bob', Age = 22}
 assert (name == 'Bob' and age == 22)
 print 'finis'
 `
+// there are some basic constructs which need help from the Go side...
+// Fortunately it's very easy to import them!
 
 func byteBuffer(sz int) []byte {
 	return make([]byte, sz)
+}
+
+func bytesToString(bb []byte) string {
+	return string(bb)
 }
 
 const calling_interface = `
@@ -163,6 +169,8 @@ local buff = byteBuffer(100)
 assert(#buff == 100)
 local k,err = f.Read(buff)
 assert(k == 100)
+local s = bytesToString(buff)
+assert(s:match '^package luar')
 f.Close()
 `
 
@@ -176,6 +184,7 @@ func Test_callingStructs(t *testing.T) {
 		"UnpacksTest": UnpacksTest,
 		"OsOpen":      os.Open,
 		"byteBuffer":  byteBuffer,
+		"bytesToString": bytesToString,
 	})
 
 	code := accessing_structs + calling_interface
@@ -194,7 +203,8 @@ return {
   marked = {1,2},
   options = {
       leave = true,
-      cancel = 'always'
+      cancel = 'always',
+	  tags = {strong=true,foolish=true},
   }
 }
 `
@@ -232,15 +242,43 @@ func Test_parsingConfig(t *testing.T) {
 	// can get the field itself as a Lua object, and so forth
 	opts := lo.GetObject("options")
 	assertEq(t, "opts", opts.Get("leave"), true)
-	// note that these Get methods understand nested fields ('chains')
+	// note that these Get methods understand nested fields ('chains')	
 	assertEq(t, "chain", lo.Get("options.leave"), true)
+	assertEq(t, "chain", lo.Get("options.tags.strong"), true)	
+	// nested fields don't crash but return nil
+	assertEq(t, "chain", lo.Get("options.tags.extra.flakey"), nil)	
 	markd := lo.GetObject("marked")
 	assertEq(t, "marked1", markd.Geti(1), 1.0)
 	iter := lo.Iter()
+	keys := []string{}
 	for iter.Next() {
-		println("key", iter.Key.(string))
+		keys = append(keys, iter.Key.(string))
+	}
+	if ! compareNoOrder(keys,[]string{"baggins","options","marked","age","name"}) {
+		t.Error("keys were not the same!")
 	}
 
+}
+
+func findInSlice(ss []string, s string) int {
+	for i,v := range ss {
+		if v == s {
+			return i
+		}
+	}
+	return -1
+}
+
+func compareNoOrder (s1,s2 []string) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+	for _,s := range s1 {
+		if findInSlice(s2,s) == -1 {
+			return false
+		}
+	}
+	return true
 }
 
 const luaf = `
