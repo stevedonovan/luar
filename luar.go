@@ -389,9 +389,8 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	}
 	if was_ptr {
 		return s.Interface()
-	} else {
-		return s.Elem().Interface()
 	}
+    return s.Elem().Interface()
 }
 
 // copy a Go slice to a Lua table
