@@ -149,7 +149,7 @@ func GoLua(L *lua.State) int {
 				res = LT.Resume(0)
 			} else { // receive on a channel
 				val, ok := ch.Recv()
-				GoToLua(LT, t.Elem(), val)
+				GoToLua(LT, t.Elem(), val,false)
 				LT.PushBoolean(ok)
 				res = LT.Resume(2)
 			}
@@ -217,7 +217,7 @@ func slice__index(L *lua.State) int {
 			RaiseError(L, "slice get: index out of range")
 		}
 		ret := slice.Index(idx - 1)
-		GoToLua(L, ret.Type(), ret)
+		GoToLua(L, ret.Type(), ret,false)
 	} else {
 		name := L.ToString(2)
 		switch name {
@@ -251,7 +251,7 @@ func map__index(L *lua.State) int {
 	val, t := valueOfProxy(L, 1)
 	key := LuaToGo(L, t.Key(), 2)
 	ret := val.MapIndex(valueOf(key))
-	GoToLua(L, ret.Type(), ret)
+	GoToLua(L, ret.Type(), ret,false)
 	return 1
 }
 
@@ -294,7 +294,7 @@ func struct__index(L *lua.State) int {
 	if !ret.IsValid() { // no such field, try for method?
 		callGoMethod(L, name, st)
 	} else {
-		GoToLua(L, ret.Type(), ret)
+		GoToLua(L, ret.Type(), ret,false)
 	}
 	return 1
 }
@@ -400,7 +400,7 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 		L.CreateTable(n, 0)
 		for i := 0; i < n; i++ {
 			L.PushInteger(int64(i + 1))
-			GoToLua(L, nil, vslice.Index(i))
+			GoToLua(L, nil, vslice.Index(i),true)
 			L.SetTable(-3)
 		}
 		return 1
@@ -418,8 +418,8 @@ func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 		L.CreateTable(0, n)
 		for _, key := range vmap.MapKeys() {
 			val := vmap.MapIndex(key)
-			GoToLua(L, nil, key)
-			GoToLua(L, nil, val)
+			GoToLua(L, nil, key,false)
+			GoToLua(L, nil, val,true)
 			L.SetTable(-3)
 		}
 		return 1
@@ -433,15 +433,13 @@ func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 // Push a Go value 'val' of type 't' on the Lua stack.
 // If we haven't been given a concrete type, use the type of the value
 // and unbox any interfaces.
-func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
+func GoToLua(L *lua.State, t reflect.Type, val reflect.Value,dontproxify bool) {
 	if !val.IsValid() {
 		L.PushNil()
 		return
 	}
-	proxify := true
 	if t == nil {
 		t = val.Type()
-		proxify = false
 	}
 	if t.Kind() == reflect.Interface && !val.IsNil() { // unbox interfaces!
 		val = valueOf(val.Interface())
@@ -474,7 +472,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
 		}
 	case reflect.Slice:
 		{
-			if proxify {
+			if ! dontproxify {
 				makeValueProxy(L, val, SLICE_META)
 			} else {
 				CopySliceToTable(L, val)
@@ -482,7 +480,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value) {
 		}
 	case reflect.Map:
 		{
-			if proxify {
+			if ! dontproxify {
 				makeValueProxy(L, val, MAP_META)
 			} else {
 				CopyMapToTable(L, val)
@@ -704,7 +702,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 		}
 		resv := funv.Call(args)
 		for i, val := range resv {
-			GoToLua(L, tout[i], val)
+			GoToLua(L, tout[i], val,false)
 		}
 		return len(resv)
 	}
@@ -736,7 +734,7 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 				L.PushGoFunction(lf)
 			}
 		} else {
-			GoToLua(L, t, valueOf(val))
+			GoToLua(L, t, valueOf(val),false)
 		}
 		L.SetField(-2, name)
 	}
@@ -792,8 +790,8 @@ func (lo *LuaObject) Geti(idx int64) interface{} {
 func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
 	L := lo.L
 	lo.Push() // the table
-	GoToLua(L, nil, valueOf(idx))
-	GoToLua(L, nil, valueOf(val))
+	GoToLua(L, nil, valueOf(idx),false)
+	GoToLua(L, nil, valueOf(val),false)
 	L.SetTable(-3)
 	L.Pop(1) // the  table
 	return val
@@ -804,7 +802,7 @@ func (lo *LuaObject) Call(args ...interface{}) (res interface{}, err error) {
 	L := lo.L
 	lo.Push()                  // the function...
 	for _, arg := range args { // push the args
-		GoToLua(L, nil, valueOf(arg))
+		GoToLua(L, nil, valueOf(arg),false)
 	}
 	err = L.Call(len(args), 1)
 	if err == nil {
@@ -870,7 +868,7 @@ func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 
 // a new LuaObject from a Go value
 func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
-	GoToLua(L, nil, valueOf(val))
+	GoToLua(L, nil, valueOf(val),true)
 	return NewLuaObject(L, -1)
 }
 

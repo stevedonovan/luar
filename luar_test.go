@@ -286,9 +286,8 @@ Libs = {}
 function Libs.fun(s,i,t,m)
 	assert(s == 'hello')
 	assert(i == 42)
-	--//note that these chaps are coming across as tables, not proxies
-	assert(type(t) == 'table' and t[1] == 42)
-	assert(type(m) == 'table' and m.name == 'Joe')
+	assert(type(t) == 'userdata' and t[1] == 42)
+	assert(type(m) == 'userdata' and m.name == 'Joe')
 	return 'ok'
 end
 `
@@ -316,7 +315,7 @@ func Test_callingLua(t *testing.T) {
 	err = L.DoString(luaf)
 	if err != nil {
 		t.Error(err)
-	}
+	}    
 
 	fun := NewLuaObjectFromName(L, "Libs.fun")
 	res, err = fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
