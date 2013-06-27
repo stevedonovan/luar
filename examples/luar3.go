@@ -15,20 +15,16 @@ func main() {
     pack := luar.NewLuaObject(L,-1)    
     fmt.Println(pack.Get("path"))
     
-/*
-    L.GetGlobal("string")
-    strtab := luar.NewLuaObject(L,-1)    
-    iter := strtab.Iter()
-    for iter.Next() {
-        fmt.Println(iter.Key,iter.Value)
-    }
-*/
+    lcopy := luar.NewLuaObjectFromValue
     
     gsub := luar.NewLuaObjectFromName(L,"string.gsub")
-    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",luar.Map {
+    
+    rmap := lcopy(L,luar.Map {
         "NAME": "Dolly",
         "HOME": "where you belong",
     })
+    
+    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",rmap)
     if res == nil {
         fmt.Println("error",err)
     } else {
