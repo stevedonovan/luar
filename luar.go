@@ -35,6 +35,7 @@ import lua "github.com/aarzilli/golua/lua"
 import "strings"
 import "reflect"
 import "unsafe"
+//import "fmt"
 
 // raise a Lua error from Go code
 func RaiseError(L *lua.State, msg string) {
@@ -174,11 +175,13 @@ func initializeProxies(L *lua.State) {
 	L.SetMetaMethod("__index", slice__index)
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
+    L.SetMetaMethod("__ipairs",slice__ipairs)
 	flagValue()
 	L.NewMetaTable(MAP_META)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
+    L.SetMetaMethod("__pairs",map__pairs)
 	flagValue()
 	L.NewMetaTable(STRUCT_META)
 	L.SetMetaMethod("__index", struct__index)
@@ -251,8 +254,13 @@ func map__index(L *lua.State) int {
 	val, t := valueOfProxy(L, 1)
 	key := LuaToGo(L, t.Key(), 2)
 	ret := val.MapIndex(valueOf(key))
-	GoToLua(L, ret.Type(), ret,false)
-	return 1
+    if ret.IsValid() {
+        GoToLua(L, ret.Type(), ret,false)
+        return 1
+    } else {
+        RaiseError(L,"cannot index this map with this type")
+        return 0
+    }
 }
 
 func map__newindex(L *lua.State) int {
@@ -261,6 +269,45 @@ func map__newindex(L *lua.State) int {
 	val := LuaToGo(L, t.Elem(), 3)
 	m.SetMapIndex(valueOf(key), valueOf(val))
 	return 0
+}
+
+func map__pairs(L *lua.State) int {
+    m,_ := valueOfProxy(L,1)
+    keys := m.MapKeys()
+    idx := -1
+    n := m.Len()
+    iter := func (L *lua.State) int {
+        idx ++
+        if (idx == n) {
+            L.PushNil()
+            return 1
+        }
+        GoToLua(L,nil,keys[idx],false)
+        val := m.MapIndex(keys[idx])
+        GoToLua(L,nil,val,false)
+        return 2
+    }
+    L.PushGoFunction(iter)
+    return 1
+}
+
+func slice__ipairs(L *lua.State) int {
+    s,_ := valueOfProxy(L,1)
+    n := s.Len()
+    idx := -1
+    iter := func (L *lua.State) int {
+        idx ++
+        if (idx == n) {
+            L.PushNil()
+            return 1
+        }
+        GoToLua(L,nil,valueOf(idx+1),false)  // report as 1-based index
+        val := s.Index(idx)
+        GoToLua(L,nil,val,false)
+        return 2
+    }
+    L.PushGoFunction(iter)
+    return 1
 }
 
 func callGoMethod(L *lua.State, name string, st reflect.Value) {
@@ -900,11 +947,33 @@ func slice2table(L *lua.State) int {
 	return CopySliceToTable(L, valueOf(unwrapProxy(L, 1)))
 }
 
+const setup = `
+local opairs = pairs
+function pairs(t)
+    local mt = getmetatable(t)
+    if mt and mt.__pairs then
+        return mt.__pairs(t)
+    else
+        return opairs(t)
+    end
+end
+local oipairs = ipairs
+function ipairs(t)
+    local mt = getmetatable(t)
+    if mt and mt.__ipairs then
+        return mt.__ipairs(t)
+    else
+        return oipairs(t)
+    end
+end    
+`
+
 // make and initialize a new Lua state
 func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
 	initializeProxies(L)
+    L.DoString(setup)
 	RawRegister(L, "luar", Map{
 		"map2table":   map2table,
 		"slice2table": slice2table,
