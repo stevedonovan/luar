@@ -54,19 +54,16 @@ func main() {
         "ValueOf":reflect.ValueOf,
     })
     
+    str_slice := luar.Types([]string{})
+    
     fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
     linenoise.SetCompletionHandler(func(in string) []string {
-        val,err := complete.Call(in)
-        if err != nil {
+        val,err := complete.Callf(str_slice,in)
+        if err != nil || len(val) == 0 && val[0] == nil {
             return []string{}
         } else {
-            is :=  val.([]interface{})
-            out := make([]string,len(is))
-            for i,s := range is {
-                out[i] = s.(string)
-            }
-            return out
+            return val[0].([]string)
         }
     })
 	for {
@@ -104,8 +101,13 @@ const lua_code = `
 local tostring = tostring
 local append = table.insert
 local function quote (v)
-  if type(v) == 'string' then
+  local t = type(v)
+  if t == 'string' then
     return ('%q'):format(v)
+  elseif t == 'function' then
+    return '<fun>'
+  elseif t == 'userdata' then
+    return '<udata>'
   else
     return tostring(v)
   end
@@ -170,7 +172,7 @@ dump = function(t, options)
           elseif key:match('%s') then
             key = quote(key)
           end
-          put(key .. ':')
+          put(key .. '=')
           put_value(value)
           _continue_0 = true
         until true
@@ -206,19 +208,18 @@ end
 
 function lua_candidates(line)
   -- identify the expression!
+  local res = {}
   local i1,i2 = line:find('[.:%w_]+$')
-  if not i1 then return end
+  if not i1 then return res end
   local front,partial = line:sub(1,i1-1), line:sub(i1)
   local prefix, last = partial:match '(.-)([^.:]*)$'
   local t, all = _G
-  local res = {}
   if #prefix > 0 then        
     local P = prefix:sub(1,-2)
     all = last == ''
     for w in P:gmatch '[^.:]+' do
       t = t[w]
       if not t then
-        res = {line}
         return res
       end
     end
@@ -238,7 +239,6 @@ function lua_candidates(line)
   if mt and is_pair_iterable(mt.__index) then
     append_candidates(mt.__index)
   end
-  if #res == 0 then append(res,line) end
   return res
 end
 

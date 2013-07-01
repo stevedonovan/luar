@@ -103,6 +103,16 @@ func unwrapProxy(L *lua.State, idx int) interface{} {
 	return nil
 }
 
+func proxyType (L *lua.State) int {
+    v := unwrapProxy(L,1)
+    if v != nil {
+        GoToLua(L,nil,valueOf(reflect.TypeOf(v)),false)
+    } else {
+        L.PushNil()
+    }
+    return 1
+}
+
 func unwrapProxyValue(L *lua.State, idx int) reflect.Value {
 	return valueOf(unwrapProxy(L, idx))
 }
@@ -901,19 +911,44 @@ func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
 	return val
 }
 
+func Types(values ...interface{}) []reflect.Type {
+    res := make([]reflect.Type,len(values))
+    for i,arg := range values {
+        res[i] = reflect.TypeOf(arg)
+    }
+    return res
+}
+
 // call a Lua object
-func (lo *LuaObject) Call(args ...interface{}) (res interface{}, err error) {
+func (lo *LuaObject) Callf (rtypes []reflect.Type, args ...interface{}) (res []interface{}, err error) {
 	L := lo.L
+    if rtypes == nil {
+        rtypes = []reflect.Type{nil}
+    }
+    res = make([]interface{},len(rtypes))
 	lo.Push()                  // the function...
 	for _, arg := range args { // push the args
 		GoToLua(L, nil, valueOf(arg),false)
 	}
 	err = L.Call(len(args), 1)
 	if err == nil {
-		res = LuaToGo(L, nil, -1)
-		L.Pop(1)
-	}
+        for i,t := range rtypes {
+            res[i] = LuaToGo(L, t, -1)
+        }
+        L.Pop(len(rtypes))
+	}	    
 	return
+}
+
+func (lo *LuaObject) Call(args ...interface{}) (res interface{}, err error) {
+    var sres []interface{}
+    sres,err = lo.Callf(nil,args...)
+    if err != nil {
+        res = nil
+        return
+    } else {
+        return sres[0],nil
+    }
 }
 
 // push this Lua object
@@ -1049,6 +1084,7 @@ func Init() *lua.State {
 		"slice2table": slice2table,
         "map":makeMap,
         "slice":makeSlice,
+        "type":proxyType,
 	})
 	return L
 }
