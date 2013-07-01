@@ -176,19 +176,24 @@ func initializeProxies(L *lua.State) {
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
     L.SetMetaMethod("__ipairs",slice__ipairs)
+    L.SetMetaMethod("__tostring",proxy__tostring)
 	flagValue()
 	L.NewMetaTable(MAP_META)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
     L.SetMetaMethod("__pairs",map__pairs)
+    L.SetMetaMethod("__tostring",proxy__tostring)
 	flagValue()
 	L.NewMetaTable(STRUCT_META)
 	L.SetMetaMethod("__index", struct__index)
 	L.SetMetaMethod("__newindex", struct__newindex)
+    L.SetMetaMethod("__pairs",struct__pairs)
+    L.SetMetaMethod("__tostring",proxy__tostring)
 	flagValue()
 	L.NewMetaTable(INTERFACE_META)
 	L.SetMetaMethod("__index", interface__index)
+    L.SetMetaMethod("__tostring",proxy__tostring)
 	flagValue()
 	L.NewMetaTable(CHANNEL_META)
 	//~ RegisterFunctions(L,"*",FMap {
@@ -202,6 +207,12 @@ func initializeProxies(L *lua.State) {
 	L.SetField(-2, "Recv")
 	L.SetField(-2, "__index")
 	flagValue()
+}
+
+func proxy__tostring(L *lua.State) int {
+    obj,_ := valueOfProxy(L,1)
+    L.PushString(obj.Type().String())
+    return 1
 }
 
 func slice_slice(L *lua.State) int {
@@ -290,6 +301,52 @@ func map__pairs(L *lua.State) int {
     L.PushGoFunction(iter)
     return 1
 }
+
+func struct__pairs(L *lua.State) int {
+    st,t := valueOfProxy(L,1)
+    // make sure we work over pointers to structs as well...
+    if t.Kind() == reflect.Ptr {
+        t = t.Elem()
+        st = st.Elem()
+    }
+    idx := -1
+    n := t.NumField()
+    iter := func (L *lua.State) int {
+        idx ++
+        if (idx == n) {
+            L.PushNil()
+            return 1
+        }
+        name := t.Field(idx).Name
+        GoToLua(L,nil,valueOf(name),false)
+        val := st.Field(idx)
+        GoToLua(L,nil,val,false)
+        return 2
+    }
+    L.PushGoFunction(iter)
+    return 1
+}
+
+func interface__pairs(L *lua.State) int {
+    ii,t := valueOfProxy(L,1)
+    n := ii.NumMethod()
+    idx := -1
+    iter := func (L *lua.State) int {
+        idx ++
+        if (idx == n) {
+            L.PushNil()
+            return 1
+        }
+        name := t.Method(idx).Name        
+        GoToLua(L,nil,valueOf(name),false)
+        val := t.Name()
+        GoToLua(L,nil,valueOf(val),false)
+        return 2
+    }
+    L.PushGoFunction(iter)
+    return 1    
+}
+
 
 func slice__ipairs(L *lua.State) int {
     s,_ := valueOfProxy(L,1)
@@ -947,6 +1004,19 @@ func slice2table(L *lua.State) int {
 	return CopySliceToTable(L, valueOf(unwrapProxy(L, 1)))
 }
 
+func makeMap(L *lua.State) int {
+    m := reflect.MakeMap(reflect.TypeOf(tmap))
+    makeValueProxy(L,m,MAP_META);
+    return 1;
+}
+
+func makeSlice(L *lua.State) int {
+    n := L.OptInteger(1,0)
+    s := reflect.MakeSlice(reflect.TypeOf(tslice), n, n)
+    makeValueProxy(L,s,SLICE_META);
+    return 1;
+}
+
 const setup = `
 local opairs = pairs
 function pairs(t)
@@ -977,6 +1047,8 @@ func Init() *lua.State {
 	RawRegister(L, "luar", Map{
 		"map2table":   map2table,
 		"slice2table": slice2table,
+        "map":makeMap,
+        "slice":makeSlice,
 	})
 	return L
 }

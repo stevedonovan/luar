@@ -1,38 +1,82 @@
+/* A golua REPL with line editing, pretty-printing and tab completion.
+    Import any Go functions and values into Lua and play with them
+    interactively!    
+*/
 package main
 
-import (
-	"fmt"
-    "regexp"
+import (  
+	"fmt"    
+    "strings"
 	"github.com/GeertJohan/go.linenoise"
     "github.com/stevedonovan/luar"
 )
 
+// your packages go here
+import (  
+    "regexp"
+    "reflect"
+)
+
+type MyStruct struct {
+    Name string
+    Age int
+}
+
 
 func main() {
-    L := luar.Init()
-    defer L.Close()
+    L := luar.Init()    
     
-    err := L.DoString(dumper)
+   	defer func() {
+        L.Close()
+		if x := recover(); x != nil {
+			fmt.Println("runtime "+x.(error).Error())
+		}
+	}()
+    
+    err := L.DoString(lua_code)
     if err != nil {
         fmt.Println("initial " + err.Error())
         return
-    }    
+    } 
+   
+    complete := luar.NewLuaObjectFromName(L,"lua_candidates")           
     
-    // Go functions or values you want to use interactively!
+    // Go functions or values you want to use interactively!    
+    ST := &MyStruct{"Dolly",46}    
+  
     luar.Register(L,"",luar.Map {
         "regexp":regexp.Compile,
+        "println":fmt.Println,
+        "ST":ST,
     })
     
-    fmt.Println("luar prompt")
+    luar.Register(L,"reflect",luar.Map {
+        "ValueOf":reflect.ValueOf,
+    })
+    
+    fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
+    linenoise.SetCompletionHandler(func(in string) []string {
+        val,err := complete.Call(in)
+        if err != nil {
+            return []string{}
+        } else {
+            is :=  val.([]interface{})
+            out := make([]string,len(is))
+            for i,s := range is {
+                out[i] = s.(string)
+            }
+            return out
+        }
+    })
 	for {
-        /* // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+    //    /* // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
 		str,err := linenoise.Line("> ")
         if err != nil {
             return
         }
-        */
-        str := linenoise.Line("> ")
+       // */
+        //str := linenoise.Line("> ")
         if len(str) > 0 {
             if str == "exit" {
                 return
@@ -43,7 +87,12 @@ func main() {
             }
             err := L.DoString(str)
             if err != nil {
-                fmt.Println(err)
+                errs := err.Error()
+                idx := strings.Index(errs,": ")
+                if idx > -1 {
+                    errs = errs[idx+2:]
+                }
+                fmt.Println(errs)
             }
         } else {
             fmt.Println("empty line. Use exit to get out")
@@ -51,10 +100,10 @@ func main() {
 	}
 }
 
-const dumper = `
+const lua_code = `
 local tostring = tostring
 local append = table.insert
-local quote = function(v)
+local function quote (v)
   if type(v) == 'string' then
     return ('%q'):format(v)
   else
@@ -65,11 +114,10 @@ local dump
 dump = function(t, options)
   options = options or { }
   local limit = options.limit or 1000
-  local buff = {
-    tables = {
-      [t] = true
-    }
-  }
+  local buff = {tables={}}
+  if type(t) == 'table' then
+      buff.tables[t] = true
+  end
   local k, tbuff = 1, nil
   local function put(v)
     buff[k] = v
@@ -148,4 +196,50 @@ dump = function(t, options)
   return table.concat(buff)
 end
 _G.tostring = dump
+
+local append = table.insert
+
+local function is_pair_iterable(t)
+    local mt = getmetatable(t)
+    return type(t) == 'table' or (mt and mt.__pairs)
+end
+
+function lua_candidates(line)
+  -- identify the expression!
+  local i1,i2 = line:find('[.:%w_]+$')
+  if not i1 then return end
+  local front,partial = line:sub(1,i1-1), line:sub(i1)
+  local prefix, last = partial:match '(.-)([^.:]*)$'
+  local t, all = _G
+  local res = {}
+  if #prefix > 0 then        
+    local P = prefix:sub(1,-2)
+    all = last == ''
+    for w in P:gmatch '[^.:]+' do
+      t = t[w]
+      if not t then
+        res = {line}
+        return res
+      end
+    end
+  end
+  prefix = front .. prefix  
+  local function append_candidates(t)  
+    for k,v in pairs(t) do
+      if all or k:sub(1,#last) == last then
+        append(res,prefix..k)
+      end
+    end
+  end
+  local mt = getmetatable(t)
+  if is_pair_iterable(t) then
+    append_candidates(t)
+  end
+  if mt and is_pair_iterable(mt.__index) then
+    append_candidates(mt.__index)
+  end
+  if #res == 0 then append(res,line) end
+  return res
+end
+
 `
