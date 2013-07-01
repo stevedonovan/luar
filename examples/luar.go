@@ -7,6 +7,50 @@ import (
     "github.com/stevedonovan/luar"
 )
 
+
+func main() {
+    L := luar.Init()
+    defer L.Close()
+    
+    err := L.DoString(dumper)
+    if err != nil {
+        fmt.Println("initial " + err.Error())
+        return
+    }    
+    
+    // Go functions or values you want to use interactively!
+    luar.Register(L,"",luar.Map {
+        "regexp":regexp.Compile,
+    })
+    
+    fmt.Println("luar prompt")
+	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
+	for {
+        /* // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+		str,err := linenoise.Line("> ")
+        if err != nil {
+            return
+        }
+        */
+        str := linenoise.Line("> ")
+        if len(str) > 0 {
+            if str == "exit" {
+                return
+            }
+            linenoise.AddHistory(str)
+            if str[0] == '=' {
+                str = "print(" + str[1:] + ")"
+            }
+            err := L.DoString(str)
+            if err != nil {
+                fmt.Println(err)
+            }
+        } else {
+            fmt.Println("empty line. Use exit to get out")
+        }
+	}
+}
+
 const dumper = `
 local tostring = tostring
 local append = table.insert
@@ -105,51 +149,3 @@ dump = function(t, options)
 end
 _G.tostring = dump
 `
-
-func main() {
-    L := luar.Init()
-    defer L.Close()
-    
-    err := L.DoString(dumper)
-    if err != nil {
-        fmt.Println("initial " + err.Error())
-        return
-    }
-    
-    M := luar.Map {
-        "one":1,
-        "two":2,
-        "three":3,        
-    }
-    
-    // put here Go functions or values you want to use interactively!
-    luar.Register(L,"",luar.Map {
-        "regexp":regexp.Compile,
-        "M":M,
-    })
-    
-    fmt.Println("luar prompt")
-	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
-	for {
-		str := linenoise.Line("> ")
-        if len(str) > 0 {
-            if len(str) == 1 || str[0] == 0 {
-                return
-            } else
-            if str == "exit" {
-                return
-            }
-            linenoise.AddHistory(str)
-            if str[0] == '=' {
-                str = "print(" + str[1:] + ")"
-            }
-            err := L.DoString(str)
-            if err != nil {
-                fmt.Println(err)
-            }
-        } else {
-            fmt.Println("ding!")
-        }
-	}
-}
-
