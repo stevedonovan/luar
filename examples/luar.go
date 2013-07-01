@@ -70,13 +70,13 @@ func main() {
         }
     })
 	for {
-    //    /* // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+       /* // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
 		str,err := linenoise.Line("> ")
         if err != nil {
             return
         }
        // */
-        //str := linenoise.Line("> ")
+        str := linenoise.Line("> ")
         if len(str) > 0 {
             if str == "exit" {
                 return
