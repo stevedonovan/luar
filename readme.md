@@ -166,10 +166,24 @@ accessing table-like objects, and a Call method for calling functions.
 Here is the very flexible Lua function `string.gsub` being called from Go (examples/luar3.go):
 
     gsub := luar.NewLuaObjectFromName(L,"string.gsub")
-    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",luar.Map {
+    gmap := luar.NewLuaObjectFromvalue(luar.Map {
         "NAME": "Dolly",
         "HOME": "where you belong",
-    })
+    })    
+    res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",gmap)
+    --> res is now "hello Dolly go where you belong"
+    
+Here we do have to explicitly copy the map to a Lua table, because `gsub`
+will not handle userdata types.  These functions are rather verbose, but it's
+easy to create aliases:
+
+    var lookup = luar.NewLuaObjectFromName
+    var lcopy = luar.NewLuaObjectFromValue
+    ....
+
+`luar.Callf` is used whenever:
+   * the Lua function has multiple return values
+   * and/or you have exact types for these values
 
 ## An interactive REPL for Golua
 
@@ -216,7 +230,10 @@ nil
 > println(s)
 [10 20]
 ```
-A similar operation is `luar.map` (with corresponding `luar.map2table`):
+A similar operation is `luar.map` (with corresponding `luar.map2table`).
+Using `luar.type` we can find the Go type of a proxy (it returns `nil` if this isn't
+a Go type). By getting the type of a value we can then do _reflection_ and 
+find out what methods a type has, etc.
 
 ```lua
 > m = luar.map()
@@ -225,6 +242,59 @@ A similar operation is `luar.map` (with corresponding `luar.map2table`):
 > m.three = 3
 > println(m)
 map[one:1 two:2 three:3]
+> mt = luar.type(m)
+> = mt.String()
+"map[string]interface {}"
+> = mt.Key().String()
+"string"
+> mtt = luar.type(mt)
+> = mtt.String()
+"*reflect.rtype"
+> = mtt.NumMethod()
+31
+
+```
+tab-completion is implemented in such Lua code:  the Lua completion code
+merely requires that a type implement `__pairs`. This allows tab to
+expand `mtt.S` to `mtt.String` in the last example.
+
+
+```lua
+local function sdump(st)
+    local t = luar.type(st)
+    local val = luar.value(st)
+    local nm = t.NumMethod()
+    local mt = t --// type to find methods on ptr receiver
+    if t.Kind() == 22 then --// pointer!
+        t = t.Elem()
+        val = val.Elem()
+    end
+    local n = t.NumField()
+    local cc = {}
+    for i = 1,n do
+        local f,v = t.Field(i-1)
+        if f.PkgPath == "" then --// only public fields!
+            v = val.Field(i-1)    
+            cc[f.Name] = v.Interface()
+        end
+    end
+    --// then public methods...
+    for i = 1,nm do
+        local m = mt.Method(i-1)
+        if m.PkgPath == "" then --// again, only public
+            cc[m.Name] = true
+        end
+    end
+    return cc
+end
+        
+mt = getmetatable(__DUMMY__)
+mt.__pairs = function(st)
+    local cc = sdump(st)
+    return pairs(cc)
+end
 ```
 
+`sdump` is pretty much the way this would be encoded in Go itself; again, the
+eccentric dot-notation makes it more familiar. 
 

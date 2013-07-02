@@ -286,6 +286,7 @@ Libs = {}
 function Libs.fun(s,i,t,m)
 	assert(s == 'hello')
 	assert(i == 42)
+    --// slices and maps passed as proxies
 	assert(type(t) == 'userdata' and t[1] == 42)
 	assert(type(m) == 'userdata' and m.name == 'Joe')
 	return 'ok'

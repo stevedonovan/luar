@@ -14,14 +14,16 @@ import (
 // your packages go here
 import (  
     "regexp"
-    "reflect"
 )
+
+type Dummy struct {
+    Name string
+}
 
 type MyStruct struct {
     Name string
     Age int
 }
-
 
 func main() {
     L := luar.Init()    
@@ -33,13 +35,29 @@ func main() {
 		}
 	}()
     
+    luar.Register(L,"",luar.Map {
+        "__DUMMY__":&Dummy{"me"},
+    })   
+    
+    // most of this program's code is Lua....
     err := L.DoString(lua_code)
     if err != nil {
         fmt.Println("initial " + err.Error())
         return
-    } 
-   
+    }    
+    // particularly the completion logic
     complete := luar.NewLuaObjectFromName(L,"lua_candidates")           
+    // this function returns a string slice of candidates
+    str_slice := luar.Types([]string{})
+        
+    linenoise.SetCompletionHandler(func(in string) []string {
+        val,err := complete.Callf(str_slice,in)
+        if err != nil || len(val) == 1 && val[0] == nil {
+            return []string{}
+        } else {
+            return val[0].([]string)
+        }
+    })        
     
     // Go functions or values you want to use interactively!    
     ST := &MyStruct{"Dolly",46}    
@@ -48,32 +66,19 @@ func main() {
         "regexp":regexp.Compile,
         "println":fmt.Println,
         "ST":ST,
-    })
-    
-    luar.Register(L,"reflect",luar.Map {
-        "ValueOf":reflect.ValueOf,
-    })
-    
-    str_slice := luar.Types([]string{})
+    })    
     
     fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
-    linenoise.SetCompletionHandler(func(in string) []string {
-        val,err := complete.Callf(str_slice,in)
-        if err != nil || len(val) == 0 && val[0] == nil {
-            return []string{}
-        } else {
-            return val[0].([]string)
-        }
-    })
+        
 	for {
-       /* // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+     /*   // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
 		str,err := linenoise.Line("> ")
         if err != nil {
             return
         }
        // */
-        str := linenoise.Line("> ")
+       str := linenoise.Line("> ")
         if len(str) > 0 {
             if str == "exit" {
                 return
@@ -239,7 +244,44 @@ function lua_candidates(line)
   if mt and is_pair_iterable(mt.__index) then
     append_candidates(mt.__index)
   end
+  if mt and is_pair_iterable(mt.__methods) then
+    append_candidates(mt.__methods)
+  end  
   return res
 end
 
+local function sdump(st)
+    local t = luar.type(st)
+    local val = luar.value(st)
+    local nm = t.NumMethod()
+    local mt = t --// type to dispatch methods on ptr receiver
+    if t.Kind() == 22 then --// pointer!
+        t = t.Elem()
+        val = val.Elem()
+    end
+    local n = t.NumField()
+    local cc = {}
+    for i = 1,n do
+        local f,v = t.Field(i-1)
+        if f.PkgPath == "" then --// only public fields!
+            v = val.Field(i-1)    
+            cc[f.Name] = v.Interface()
+        end
+    end
+    --// then public methods...
+    for i = 1,nm do
+        local m = mt.Method(i-1)
+        if m.PkgPath == "" then --// again, only public
+            cc[m.Name] = true
+        end
+    end
+    return cc
+end
+        
+mt = getmetatable(__DUMMY__)
+mt.__pairs = function(st)
+    local cc = sdump(st)
+    return pairs(cc)
+end
+        
 `

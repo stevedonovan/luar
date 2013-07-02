@@ -198,7 +198,6 @@ func initializeProxies(L *lua.State) {
 	L.NewMetaTable(STRUCT_META)
 	L.SetMetaMethod("__index", struct__index)
 	L.SetMetaMethod("__newindex", struct__newindex)
-    L.SetMetaMethod("__pairs",struct__pairs)
     L.SetMetaMethod("__tostring",proxy__tostring)
 	flagValue()
 	L.NewMetaTable(INTERFACE_META)
@@ -311,52 +310,6 @@ func map__pairs(L *lua.State) int {
     L.PushGoFunction(iter)
     return 1
 }
-
-func struct__pairs(L *lua.State) int {
-    st,t := valueOfProxy(L,1)
-    // make sure we work over pointers to structs as well...
-    if t.Kind() == reflect.Ptr {
-        t = t.Elem()
-        st = st.Elem()
-    }
-    idx := -1
-    n := t.NumField()
-    iter := func (L *lua.State) int {
-        idx ++
-        if (idx == n) {
-            L.PushNil()
-            return 1
-        }
-        name := t.Field(idx).Name
-        GoToLua(L,nil,valueOf(name),false)
-        val := st.Field(idx)
-        GoToLua(L,nil,val,false)
-        return 2
-    }
-    L.PushGoFunction(iter)
-    return 1
-}
-
-func interface__pairs(L *lua.State) int {
-    ii,t := valueOfProxy(L,1)
-    n := ii.NumMethod()
-    idx := -1
-    iter := func (L *lua.State) int {
-        idx ++
-        if (idx == n) {
-            L.PushNil()
-            return 1
-        }
-        name := t.Method(idx).Name        
-        GoToLua(L,nil,valueOf(name),false)
-        val := t.Name()
-        GoToLua(L,nil,valueOf(val),false)
-        return 2
-    }
-    L.PushGoFunction(iter)
-    return 1    
-}
-
 
 func slice__ipairs(L *lua.State) int {
     s,_ := valueOfProxy(L,1)
@@ -1084,7 +1037,10 @@ func Init() *lua.State {
 		"slice2table": slice2table,
         "map":makeMap,
         "slice":makeSlice,
-        "type":proxyType,
+        "type":proxyType,        
 	})
+    Register(L,"luar",Map{
+        "value":reflect.ValueOf,
+    })
 	return L
 }
