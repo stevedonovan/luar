@@ -134,6 +134,16 @@ func UnpacksTest(t Test) (string, int) {
 	return t.Name, t.Age
 }
 
+type Empty struct {
+}
+
+func NewEmpty(i int) *Empty {
+    if i == 0 {
+        return nil
+    }
+    return &Empty{}
+}
+
 const accessing_structs = `
 local t = NewTest("Alice",16)
 --//t is a struct proxy...
@@ -150,6 +160,11 @@ assert(t.Age == 24)
 local name,age = UnpacksTest {Name = 'Bob', Age = 22}
 assert (name == 'Bob' and age == 22)
 print 'finis'
+
+--// function returning ptr or interface, handling return nil
+--// pull #7 hirochachacha
+assert(NewEmpty(0) == nil)
+
 `
 // there are some basic constructs which need help from the Go side...
 // Fortunately it's very easy to import them!
@@ -172,6 +187,7 @@ assert(k == 100)
 local s = bytesToString(buff)
 assert(s:match '^package luar')
 f.Close()
+
 `
 
 func Test_callingStructs(t *testing.T) {
@@ -185,6 +201,7 @@ func Test_callingStructs(t *testing.T) {
 		"OsOpen":      os.Open,
 		"byteBuffer":  byteBuffer,
 		"bytesToString": bytesToString,
+        "NewEmpty":NewEmpty,
 	})
 
 	code := accessing_structs + calling_interface

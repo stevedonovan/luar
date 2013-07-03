@@ -201,14 +201,30 @@ Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio
 10	"10"	{10}
 ```
 
-For instance, this session explores the `luar` function `slice`, which generates a Go
+One use for the `luar` REPL is to explore Go libraries. `regexp.Compile` is 
+exported as `regexp`, so we can do this. note that the endlessly useful `fmt.Println` 
+is available as `println` from Lua. Starting a line with a period ('dot') wraps
+that line in `println`; starting a line with '=' wraps it with `print` (as is usual
+with the standard Lua prompt.)
+
+```lua
+> p = regexp '[a-z]+\\S*'
+> ms =  p.FindAllString('boo woo koo',99)
+> = #ms
+3
+> println(ms)
+[boo woo koo]
+> . ms
+[boo woo koo]
+```
+
+The next session explores the `luar` function `slice`, which generates a Go
 slice. This is automatically wrapped as a proxy object. Note that the indexing
 is one-based, and that Go slices have a fixed size!  The metatable for slice proxies
 has an `__ipairs` metamethod. Although luar is (currently) based on Lua 5.1,
 it loads code to provide a 5.2-compatible `pairs` and `ipairs`.
 
-The inverse of `slice` is `slice2table`; note that the endlessly useful `fmt.Println` 
-is available as `println` from Lua.
+The inverse of `slice` is `slice2table`. 
 
 ```lua
 > s = luar.slice(2) // create a Go slice
@@ -228,6 +244,8 @@ nil
 > = luar.slice2table(s)
 {10,20}
 > println(s)
+[10 20]
+> . s
 [10 20]
 ```
 A similar operation is `luar.map` (with corresponding `luar.map2table`).

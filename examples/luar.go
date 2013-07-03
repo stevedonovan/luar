@@ -20,13 +20,25 @@ type Dummy struct {
     Name string
 }
 
+var L = luar.Init()    
+
 type MyStruct struct {
     Name string
     Age int
 }
 
-func main() {
-    L := luar.Init()    
+func register() {
+    // Go functions or values you want to use interactively!    
+    ST := &MyStruct{"Dolly",46}    
+  
+    luar.Register(L,"",luar.Map {
+        "regexp":regexp.Compile,
+        "println":fmt.Println,
+        "ST":ST,
+    })
+}
+
+func main() {    
     
    	defer func() {
         L.Close()
@@ -57,16 +69,9 @@ func main() {
         } else {
             return val[0].([]string)
         }
-    })        
-    
-    // Go functions or values you want to use interactively!    
-    ST := &MyStruct{"Dolly",46}    
-  
-    luar.Register(L,"",luar.Map {
-        "regexp":regexp.Compile,
-        "println":fmt.Println,
-        "ST":ST,
-    })    
+    })
+
+    register()
     
     fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
@@ -84,8 +89,13 @@ func main() {
                 return
             }
             linenoise.AddHistory(str)
-            if str[0] == '=' {
-                str = "print(" + str[1:] + ")"
+            if str[0] == '=' || str[0] == '.' {
+                exprs := str[1:]
+                if str[0] == '=' {
+                    str = "print(" + exprs + ")"
+                } else {
+                    str = "println(" + exprs + ")"
+                }
             }
             err := L.DoString(str)
             if err != nil {
