@@ -560,6 +560,10 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value,dontproxify bool) {
 			} else if v, ok := val.Interface().(*LuaObject); ok {
 				v.Push()
 			} else {
+				if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && !val.Elem().IsValid() {
+					L.PushNil()
+					return
+				}
 				makeValueProxy(L, val, STRUCT_META)
 			}
 		}
@@ -889,7 +893,7 @@ func (lo *LuaObject) Callf (rtypes []reflect.Type, args ...interface{}) (res []i
             res[i] = LuaToGo(L, t, -1)
         }
         L.Pop(len(rtypes))
-	}	    
+	}
 	return
 }
 
@@ -1023,7 +1027,7 @@ function ipairs(t)
     else
         return oipairs(t)
     end
-end    
+end
 `
 
 // make and initialize a new Lua state
@@ -1037,7 +1041,7 @@ func Init() *lua.State {
 		"slice2table": slice2table,
         "map":makeMap,
         "slice":makeSlice,
-        "type":proxyType,        
+        "type":proxyType,
 	})
     Register(L,"luar",Map{
         "value":reflect.ValueOf,
