@@ -52,6 +52,22 @@ func values(m map[string]interface{}) (res []interface{}) {
 	return
 }
 
+func Nil (v interface{}) string {
+    if v == nil {
+        return "bad"
+    } else {
+        return "good"
+    }
+}
+
+func NilTest(v *Test) string {
+    if v == nil {
+        return "bad"
+    } else {
+        return "good"
+    }    
+}
+
 const calling = `
 --// Calling Go functions from Lua //////
 --//  returning multiple values is straightforward
@@ -83,6 +99,10 @@ assert(v[1]==1 or v[2]==1)
 do return end
 v = luar.slice2table(v)
 assert( (v[1]==1 and v[2]==2) or (v[2]==1 and v[1]==2) )
+
+--// passing nils to Go functions
+assert(Nil(nil) == 'bad')
+assert(NilTest(nil) == 'bad')
 `
 
 func Test_callingGoFun(t *testing.T) {
@@ -96,6 +116,8 @@ func Test_callingGoFun(t *testing.T) {
 		"sum":     sum,
 		"sumv":    sumv,
 		"squares": squares,
+        "Nil":Nil,
+        "NilTest":Nil,
 	})
 
 	// can register them as a Lua table for namespacing...
@@ -118,12 +140,24 @@ type Test struct {
 	Age  int
 }
 
+type HasName interface {
+    GetName() string
+}
+
 func (self *Test) GetName() string {
 	return self.Name
 }
 
 func NewTest(name string, age int) *Test {
 	return &Test{name, age}
+}
+
+func NewName(t *Test) HasName {
+    return t
+}
+
+func GetName(o HasName) string {
+    return o.GetName()
 }
 
 func NewTestV(name string, age int) Test {
@@ -164,6 +198,15 @@ print 'finis'
 --// function returning ptr or interface, handling return nil
 --// pull #7 hirochachacha
 assert(NewEmpty(0) == nil)
+--// interfaces
+ t = NewTest("Alice",16)
+it = NewName(t)
+assert(it.GetName()=='Alice')
+assert(GetName(it)=='Alice')
+assert(GetName(t)=='Alice')
+assert(luar.type(t).String() == "*luar.Test")
+assert(luar.type(it).String() == "*luar.Test")
+print 'finished'
 
 `
 // there are some basic constructs which need help from the Go side...
@@ -202,6 +245,8 @@ func Test_callingStructs(t *testing.T) {
 		"byteBuffer":  byteBuffer,
 		"bytesToString": bytesToString,
         "NewEmpty":NewEmpty,
+        "NewName":NewName,
+        "GetName":GetName,
 	})
 
 	code := accessing_structs + calling_interface
@@ -308,6 +353,9 @@ function Libs.fun(s,i,t,m)
 	assert(type(m) == 'userdata' and m.name == 'Joe')
 	return 'ok'
 end
+function Libs.return_strings()
+    return {'one','two','three'}
+end
 `
 
 func Test_callingLua(t *testing.T) {
@@ -315,15 +363,14 @@ func Test_callingLua(t *testing.T) {
 	defer L.Close()
 
 	// the very versatile string.gsub function
-	gsub := NewLuaObjectFromName(L, "string.gsub")
+    lobj := NewLuaObjectFromName
+	gsub := lobj(L, "string.gsub")
 	// this is a Lua table... copies Go object, doesn't create proxy
 	replacements := NewLuaObjectFromValue(L, Map{
 		"NAME": "Dolly",
 		"HOME": "where you belong",
 	})
-	// Note a subtlety: for Lua functions called like this, maps are auto-converted to tables.
-	// we _could_ directly pass the map here, but for repeated calls this avoids
-	// the constant creation of Go maps and Lua tables.
+    // we do this because string.gsub wants either a string,function or table for its second arg
 	res, err := gsub.Call("hello $NAME go $HOME", "%$(%u+)", replacements)
 	if res == nil {
 		t.Error(err)
@@ -335,11 +382,22 @@ func Test_callingLua(t *testing.T) {
 		t.Error(err)
 	}    
 
-	fun := NewLuaObjectFromName(L, "Libs.fun")
+	fun := lobj(L, "Libs.fun")
 	res, err = fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
 		"name": "Joe",
 	})
 	assertEq(t, "fun", res, "ok")
+    
+    // can force the type and number of returned values using Callf
+    fun = lobj(L,"Libs.return_strings")
+    returns := Types([]string{})  // []reflect.Type
+    results,err := fun.Callf(returns)
+    // first returned result should be a slice of strings
+    strs := results[0].([]string)
+    if ! (strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
+        t.Error("did not get correct slice of strings!")
+    }
+    
 
 	println("that's all folks!")
 
