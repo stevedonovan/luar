@@ -98,14 +98,14 @@ func main() {
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
         
 	for {
-        // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+    /*   // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
         // uncomment this if you're using this branch!
 		str,err := linenoise.Line("> ")
         if err != nil {
             return
         }
        // */
-     //  str := linenoise.Line("> ")
+       str := linenoise.Line("> ")
         if len(str) > 0 {
             if str == "exit" {
                 return
