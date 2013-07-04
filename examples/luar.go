@@ -7,6 +7,7 @@ package main
 import (  
 	"fmt"    
     "strings"
+    "os"
 	"github.com/GeertJohan/go.linenoise"
     "github.com/stevedonovan/luar"
 )
@@ -22,26 +23,46 @@ type Dummy struct {
 
 var L = luar.Init()    
 
+// your Go types....
 type MyStruct struct {
     Name string
     Age int
 }
 
+type Stringer interface {
+    String() string
+}
+
+// which may have methods...
+func (s *MyStruct) String() string {
+    return s.Name
+}
+
+func String(s Stringer) string {
+    return s.String()
+}
+
 func register() {
     // Go functions or values you want to use interactively!    
     ST := &MyStruct{"Dolly",46}    
+    S := MyStruct{"Joe",32}
   
     luar.Register(L,"",luar.Map {
         "regexp":regexp.Compile,
         "println":fmt.Println,
         "ST":ST,
+        "S":S,
+        "String":String,
     })
 }
 
 func main() {    
+    history := os.Getenv("HOME")+"/.luar_history"
+    linenoise.LoadHistory(history)    
     
    	defer func() {
         L.Close()
+        linenoise.SaveHistory(history)
 		if x := recover(); x != nil {
 			fmt.Println("runtime "+x.(error).Error())
 		}
@@ -77,13 +98,14 @@ func main() {
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
         
 	for {
-     /*   // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+        // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
+        // uncomment this if you're using this branch!
 		str,err := linenoise.Line("> ")
         if err != nil {
             return
         }
        // */
-       str := linenoise.Line("> ")
+     //  str := linenoise.Line("> ")
         if len(str) > 0 {
             if str == "exit" {
                 return
@@ -92,7 +114,7 @@ func main() {
             if str[0] == '=' || str[0] == '.' {
                 exprs := str[1:]
                 if str[0] == '=' {
-                    str = "print(" + exprs + ")"
+                    str = "pprint(" + exprs + ")"
                 } else {
                     str = "println(" + exprs + ")"
                 }
@@ -111,7 +133,7 @@ func main() {
         }
 	}
 }
-
+// pretty-printing and code completion logic in Lua
 const lua_code = `
 local tostring = tostring
 local append = table.insert
@@ -212,7 +234,17 @@ dump = function(t, options)
   --pcall(tbuff, t)
   return table.concat(buff)
 end
-_G.tostring = dump
+
+function pprint(...)
+    local args,n = {...},select('#',...)
+    local res = {}
+    _G._ = args[1]
+    for i = 1,n do
+        append(res,dump(args[i]))
+    end
+    io.write(table.concat(res,'\t'),'\n')
+end
+--//_G.tostring = dump
 
 local append = table.insert
 
@@ -254,12 +286,10 @@ function lua_candidates(line)
   if mt and is_pair_iterable(mt.__index) then
     append_candidates(mt.__index)
   end
-  if mt and is_pair_iterable(mt.__methods) then
-    append_candidates(mt.__methods)
-  end  
   return res
 end
 
+--// override struct __pairs for code completion
 local function sdump(st)
     local t = luar.type(st)
     local val = luar.value(st)

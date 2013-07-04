@@ -165,6 +165,7 @@ accessing table-like objects, and a Call method for calling functions.
 
 Here is the very flexible Lua function `string.gsub` being called from Go (examples/luar3.go):
 
+```go
     gsub := luar.NewLuaObjectFromName(L,"string.gsub")
     gmap := luar.NewLuaObjectFromvalue(luar.Map {
         "NAME": "Dolly",
@@ -172,18 +173,43 @@ Here is the very flexible Lua function `string.gsub` being called from Go (examp
     })    
     res,err := gsub.Call("hello $NAME go $HOME","%$(%u+)",gmap)
     --> res is now "hello Dolly go where you belong"
+```
     
 Here we do have to explicitly copy the map to a Lua table, because `gsub`
 will not handle userdata types.  These functions are rather verbose, but it's
 easy to create aliases:
 
+```go
     var lookup = luar.NewLuaObjectFromName
     var lcopy = luar.NewLuaObjectFromValue
     ....
+```
 
 `luar.Callf` is used whenever:
    * the Lua function has multiple return values
    * and/or you have exact types for these values
+   
+For instance, in the tests the following Lua function is defined:
+
+```lua
+function Libs.return_strings()
+    return {'one','two','three'}
+end
+```
+
+Using `Call` we would get a generic `[]interface{}`, which is awkward to work 
+with.  But the return type can be specified:
+
+```go
+    fun := luar.NewLuaObjectFromName(L,"Libs.return_strings")
+    returns := luar.Types([]string{})  // --> []reflect.Type
+    results,err := fun.Callf(returns)    // -> []interface{}
+    // first returned result should be a slice of strings
+    strs := results[0].([]string)
+```
+
+The first argument may be `nil` and can be used to access multiple return
+values without caring about the exact conversion.
 
 ## An interactive REPL for Golua
 
