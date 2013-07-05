@@ -194,10 +194,18 @@ func proxy__tostring(L *lua.State) int {
     return 1
 }
 
-func slice_slice(L *lua.State) int {
+func sliceSub(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	i1, i2 := L.ToInteger(2), L.ToInteger(3)
-	newslice := slice.Slice(i1, i2)
+	newslice := slice.Slice(i1-1, i2)
+	makeValueProxy(L, newslice, cSLICE_META)
+	return 1
+}
+
+func sliceAppend(L *lua.State) int {
+	slice, _ := valueOfProxy(L, 1)
+	val := LuaToGo(L,nil,2)
+	newslice := reflect.Append(slice,valueOf(val))
 	makeValueProxy(L, newslice, cSLICE_META)
 	return 1
 }
@@ -212,13 +220,7 @@ func slice__index(L *lua.State) int {
 		ret := slice.Index(idx - 1)
 		GoToLua(L, ret.Type(), ret,false)
 	} else {
-		name := L.ToString(2)
-		switch name {
-		case "Slice":
-			L.PushGoFunction(slice_slice)
-		default:
-			RaiseError(L, "unknown slice method")
-		}
+		RaiseError(L, "slice requires integer index")
 	}
 	return 1
 }
@@ -1010,7 +1012,7 @@ func makeMap(L *lua.State) int {
 
 func makeSlice(L *lua.State) int {
     n := L.OptInteger(1,0)
-    s := reflect.MakeSlice(reflect.TypeOf(tslice), n, n)
+    s := reflect.MakeSlice(reflect.TypeOf(tslice), n, n+1)
     makeValueProxy(L,s,cSLICE_META);
     return 1;
 }
@@ -1051,6 +1053,8 @@ func Init() *lua.State {
         "map":makeMap,
         "slice":makeSlice,
         "type":proxyType,
+        "sub":sliceSub,
+        "append":sliceAppend,
 	})
     Register(L,"luar",Map{
         "value":reflect.ValueOf,
