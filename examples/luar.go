@@ -56,6 +56,11 @@ func register() {
     })
 }
 
+const (
+    LUA_PROMPT1 = "> "
+    LUA_PROMPT2 = ">> "
+)
+
 func main() {    
     history := os.Getenv("HOME")+"/.luar_history"
     linenoise.LoadHistory(history)    
@@ -96,16 +101,19 @@ func main() {
     
     fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
+    
+    prompt := LUA_PROMPT1
+    code := ""
         
 	for {
     /*   // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
         // uncomment this if you're using this branch!
-		str,err := linenoise.Line("> ")
+		str,err := linenoise.Line(prompt)
         if err != nil {
             return
         }
        // */
-       str := linenoise.Line("> ")
+      str := linenoise.Line(prompt)
         if len(str) > 0 {
             if str == "exit" {
                 return
@@ -119,14 +127,31 @@ func main() {
                     str = "println(" + exprs + ")"
                 }
             }
-            err := L.DoString(str)
+            continuing := false
+            code = code + str
+            //fmt.Println("'"+code+"'")
+            err := L.DoString(code)
             if err != nil {
                 errs := err.Error()
+               // fmt.Println("err",errs)
+                // strip line nonsense if error occurred on prompt
                 idx := strings.Index(errs,": ")
-                if idx > -1 {
+                if idx > -1 && strings.HasPrefix(errs,"[string ") {
                     errs = errs[idx+2:]
                 }
-                fmt.Println(errs)
+                // need to keep collecting line?
+                if strings.HasSuffix (errs,"near '<eof>'") {
+                    continuing = true
+                } else {
+                    fmt.Println(errs)
+                }
+            }
+            if continuing { // prompt must reflect continuing state
+                prompt = LUA_PROMPT2
+                code =code + "\n"
+            } else {
+                prompt = LUA_PROMPT1
+                code = ""
             }
         } else {
             fmt.Println("empty line. Use exit to get out")
