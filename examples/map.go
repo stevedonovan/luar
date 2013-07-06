@@ -21,10 +21,6 @@ print 'ipairs over Go slices'
 for i,v in ipairs(S) do
     print(i,v)
 end
-print 'pairs over Go structs'
-for k,v in pairs(ST) do
-    print(k,v)
-end
 `
 
 func main() {
