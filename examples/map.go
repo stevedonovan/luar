@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-    "github.com/stevedonovan/luar"
+	"github.com/stevedonovan/luar"
 )
 
 type MyStruct struct {
-    Name string
-    Age int
+	Name string
+	Age  int
 }
 
 const code = `
@@ -24,29 +24,28 @@ end
 `
 
 func main() {
-    L := luar.Init()
-    defer L.Close()
-    
-    M := luar.Map {
-        "one":"ein",
-        "two":"zwei",
-        "three":"drei",        
-    }
-    
-    S := []string {"alfred","alice","bob","frodo"}
-    
-    ST := &MyStruct{"Dolly",46}
-    
-    luar.Register(L,"",luar.Map {
-        "M":M,
-        "S":S,
-        "ST":ST,
-    })
-    
-    err := L.DoString (code)
-    if err != nil {
-        fmt.Println("error",err.Error())
-    }    
-    
-}
+	L := luar.Init()
+	defer L.Close()
 
+	M := luar.Map{
+		"one":   "ein",
+		"two":   "zwei",
+		"three": "drei",
+	}
+
+	S := []string{"alfred", "alice", "bob", "frodo"}
+
+	ST := &MyStruct{"Dolly", 46}
+
+	luar.Register(L, "", luar.Map{
+		"M":  M,
+		"S":  S,
+		"ST": ST,
+	})
+
+	err := L.DoString(code)
+	if err != nil {
+		fmt.Println("error", err.Error())
+	}
+
+}

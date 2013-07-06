@@ -1,163 +1,161 @@
 /* A golua REPL with line editing, pretty-printing and tab completion.
-    Import any Go functions and values into Lua and play with them
-    interactively!    
+   Import any Go functions and values into Lua and play with them
+   interactively!
 */
 package main
 
-import (  
-	"fmt"    
-    "strings"
-    "os"
+import (
+	"fmt"
 	"github.com/GeertJohan/go.linenoise"
-    "github.com/stevedonovan/luar"
+	"github.com/stevedonovan/luar"
+	"os"
+	"strings"
 )
 
 // your packages go here
-import (  
-    "regexp"
+import (
+	"regexp"
 )
 
 type Dummy struct {
-    Name string
+	Name string
 }
 
-var L = luar.Init()    
+var L = luar.Init()
 
 // your Go types....
 type MyStruct struct {
-    Name string
-    Age int
+	Name string
+	Age  int
 }
 
 type Stringer interface {
-    String() string
+	String() string
 }
 
 // which may have methods...
 func (s *MyStruct) String() string {
-    return s.Name
+	return s.Name
 }
 
 func String(s Stringer) string {
-    return s.String()
+	return s.String()
 }
 
 func register() {
-    // Go functions or values you want to use interactively!    
-    ST := &MyStruct{"Dolly",46}    
-    S := MyStruct{"Joe",32}
-  
-    luar.Register(L,"",luar.Map {
-        "regexp":regexp.Compile,
-        "println":fmt.Println,
-        "ST":ST,
-        "S":S,
-        "String":String,
-    })
+	// Go functions or values you want to use interactively!
+	ST := &MyStruct{"Dolly", 46}
+	S := MyStruct{"Joe", 32}
+
+	luar.Register(L, "", luar.Map{
+		"regexp":  regexp.Compile,
+		"println": fmt.Println,
+		"ST":      ST,
+		"S":       S,
+		"String":  String,
+	})
 }
 
 const (
-    LUA_PROMPT1 = "> "
-    LUA_PROMPT2 = ">> "
+	LUA_PROMPT1 = "> "
+	LUA_PROMPT2 = ">> "
 )
 
-func main() {    
-    history := os.Getenv("HOME")+"/.luar_history"
-    linenoise.LoadHistory(history)    
-    
-   	defer func() {
-        L.Close()
-        linenoise.SaveHistory(history)
+func main() {
+	history := os.Getenv("HOME") + "/.luar_history"
+	linenoise.LoadHistory(history)
+
+	defer func() {
+		L.Close()
+		linenoise.SaveHistory(history)
 		if x := recover(); x != nil {
-			fmt.Println("runtime "+x.(error).Error())
+			fmt.Println("runtime " + x.(error).Error())
 		}
 	}()
-    
-    luar.Register(L,"",luar.Map {
-        "__DUMMY__":&Dummy{"me"},
-    })   
-    
-    // most of this program's code is Lua....
-    err := L.DoString(lua_code)
-    if err != nil {
-        fmt.Println("initial " + err.Error())
-        return
-    }    
-    // particularly the completion logic
-    complete := luar.NewLuaObjectFromName(L,"lua_candidates")           
-    // this function returns a string slice of candidates
-    str_slice := luar.Types([]string{})
-        
-    linenoise.SetCompletionHandler(func(in string) []string {
-        val,err := complete.Callf(str_slice,in)
-        if err != nil || len(val) == 1 && val[0] == nil {
-            return []string{}
-        } else {
-            return val[0].([]string)
-        }
-    })
 
-    register()
-    
-    fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
+	luar.Register(L, "", luar.Map{
+		"__DUMMY__": &Dummy{"me"},
+	})
+
+	// most of this program's code is Lua....
+	err := L.DoString(lua_code)
+	if err != nil {
+		fmt.Println("initial " + err.Error())
+		return
+	}
+	// particularly the completion logic
+	complete := luar.NewLuaObjectFromName(L, "lua_candidates")
+	// this function returns a string slice of candidates
+	str_slice := luar.Types([]string{})
+
+	linenoise.SetCompletionHandler(func(in string) []string {
+		val, err := complete.Callf(str_slice, in)
+		if err != nil || len(val) == 1 && val[0] == nil {
+			return []string{}
+		} else {
+			return val[0].([]string)
+		}
+	})
+
+	register()
+
+	fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
-    
-    prompt := LUA_PROMPT1
-    code := ""
-        
+
+	prompt := LUA_PROMPT1
+	code := ""
+
 	for {
-    /*   // ctrl-C/ctrl-D handling with ctrlc branch of go.linenoise
-        // uncomment this if you're using this branch!
-		str,err := linenoise.Line(prompt)
-        if err != nil {
-            return
-        }
-       // */
-      str := linenoise.Line(prompt)
-        if len(str) > 0 {
-            if str == "exit" {
-                return
-            }
-            linenoise.AddHistory(str)
-            if str[0] == '=' || str[0] == '.' {
-                exprs := str[1:]
-                if str[0] == '=' {
-                    str = "pprint(" + exprs + ")"
-                } else {
-                    str = "println(" + exprs + ")"
-                }
-            }
-            continuing := false
-            code = code + str
-            //fmt.Println("'"+code+"'")
-            err := L.DoString(code)
-            if err != nil {
-                errs := err.Error()
-               // fmt.Println("err",errs)
-                // strip line nonsense if error occurred on prompt
-                idx := strings.Index(errs,": ")
-                if idx > -1 && strings.HasPrefix(errs,"[string ") {
-                    errs = errs[idx+2:]
-                }
-                // need to keep collecting line?
-                if strings.HasSuffix (errs,"near '<eof>'") {
-                    continuing = true
-                } else {
-                    fmt.Println(errs)
-                }
-            }
-            if continuing { // prompt must reflect continuing state
-                prompt = LUA_PROMPT2
-                code =code + "\n"
-            } else {
-                prompt = LUA_PROMPT1
-                code = ""
-            }
-        } else {
-            fmt.Println("empty line. Use exit to get out")
-        }
+		// ctrl-C/ctrl-D handling with latest update of go.linenoise
+		str, err := linenoise.Line(prompt)
+		if err != nil {
+			return
+		}
+		if len(str) > 0 {
+			if str == "exit" {
+				return
+			}
+			linenoise.AddHistory(str)
+			if str[0] == '=' || str[0] == '.' {
+				exprs := str[1:]
+				if str[0] == '=' {
+					str = "pprint(" + exprs + ")"
+				} else {
+					str = "println(" + exprs + ")"
+				}
+			}
+			continuing := false
+			code = code + str
+			//fmt.Println("'"+code+"'")
+			err := L.DoString(code)
+			if err != nil {
+				errs := err.Error()
+				// fmt.Println("err",errs)
+				// strip line nonsense if error occurred on prompt
+				idx := strings.Index(errs, ": ")
+				if idx > -1 && strings.HasPrefix(errs, "[string ") {
+					errs = errs[idx+2:]
+				}
+				// need to keep collecting line?
+				if strings.HasSuffix(errs, "near '<eof>'") {
+					continuing = true
+				} else {
+					fmt.Println(errs)
+				}
+			}
+			if continuing { // prompt must reflect continuing state
+				prompt = LUA_PROMPT2
+				code = code + "\n"
+			} else {
+				prompt = LUA_PROMPT1
+				code = ""
+			}
+		} else {
+			fmt.Println("empty line. Use exit to get out")
+		}
 	}
 }
+
 // pretty-printing and code completion logic in Lua
 const lua_code = `
 local tostring = tostring

@@ -4,29 +4,29 @@ import "fmt"
 import "github.com/stevedonovan/luar"
 
 type SomeObject struct {
-  Name string
+	Name string
 }
 
 func (o *SomeObject) GetName() string {
-  return o.Name
+	return o.Name
 }
 
 type StructWithSlice struct {
-  Slice [] SomeObject
+	Slice []SomeObject
 }
 
 func (s *StructWithSlice) GetSlice() []SomeObject {
-  return s.Slice
+	return s.Slice
 }
 
 func NewStructWithSlice(initial string) StructWithSlice {
-  r := StructWithSlice{}
-  r.Slice = append(r.Slice, SomeObject{initial})
-  return r
+	r := StructWithSlice{}
+	r.Slice = append(r.Slice, SomeObject{initial})
+	return r
 }
 
 func main() {
-  lua := `
+	lua := `
     fn = function(obj)
       slice = obj.GetSlice()
       print(type(slice), #slice)
@@ -36,17 +36,17 @@ func main() {
       return name
     end
   `
-  L := luar.Init()
-  defer L.Close()
+	L := luar.Init()
+	defer L.Close()
 
-  L.DoString(lua)
+	L.DoString(lua)
 
-  luafn := luar.NewLuaObjectFromName(L, "fn")
-  gobj := NewStructWithSlice("string")
-  res, err := luafn.Call(gobj)
-  if err != nil {
-    fmt.Println("error!",err);
-  } else {
-    fmt.Println("result",res)
-  }
+	luafn := luar.NewLuaObjectFromName(L, "fn")
+	gobj := NewStructWithSlice("string")
+	res, err := luafn.Call(gobj)
+	if err != nil {
+		fmt.Println("error!", err)
+	} else {
+		fmt.Println("result", res)
+	}
 }

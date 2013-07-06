@@ -52,20 +52,20 @@ func values(m map[string]interface{}) (res []interface{}) {
 	return
 }
 
-func Nil (v interface{}) string {
-    if v == nil {
-        return "bad"
-    } else {
-        return "good"
-    }
+func Nil(v interface{}) string {
+	if v == nil {
+		return "bad"
+	} else {
+		return "good"
+	}
 }
 
 func NilTest(v *Test) string {
-    if v == nil {
-        return "bad"
-    } else {
-        return "good"
-    }    
+	if v == nil {
+		return "bad"
+	} else {
+		return "good"
+	}
 }
 
 const calling = `
@@ -116,8 +116,8 @@ func Test_callingGoFun(t *testing.T) {
 		"sum":     sum,
 		"sumv":    sumv,
 		"squares": squares,
-        "Nil":Nil,
-        "NilTest":Nil,
+		"Nil":     Nil,
+		"NilTest": Nil,
 	})
 
 	// can register them as a Lua table for namespacing...
@@ -141,7 +141,7 @@ type Test struct {
 }
 
 type HasName interface {
-    GetName() string
+	GetName() string
 }
 
 func (self *Test) GetName() string {
@@ -153,11 +153,11 @@ func NewTest(name string, age int) *Test {
 }
 
 func NewName(t *Test) HasName {
-    return t
+	return t
 }
 
 func GetName(o HasName) string {
-    return o.GetName()
+	return o.GetName()
 }
 
 func NewTestV(name string, age int) Test {
@@ -172,10 +172,10 @@ type Empty struct {
 }
 
 func NewEmpty(i int) *Empty {
-    if i == 0 {
-        return nil
-    }
-    return &Empty{}
+	if i == 0 {
+		return nil
+	}
+	return &Empty{}
 }
 
 const accessing_structs = `
@@ -209,6 +209,7 @@ assert(luar.type(it).String() == "*luar.Test")
 print 'finished'
 
 `
+
 // there are some basic constructs which need help from the Go side...
 // Fortunately it's very easy to import them!
 
@@ -238,15 +239,15 @@ func Test_callingStructs(t *testing.T) {
 	defer L.Close()
 
 	Register(L, "", Map{
-		"NewTest":     NewTest,
-		"NewTestV":    NewTestV,
-		"UnpacksTest": UnpacksTest,
-		"OsOpen":      os.Open,
-		"byteBuffer":  byteBuffer,
+		"NewTest":       NewTest,
+		"NewTestV":      NewTestV,
+		"UnpacksTest":   UnpacksTest,
+		"OsOpen":        os.Open,
+		"byteBuffer":    byteBuffer,
 		"bytesToString": bytesToString,
-        "NewEmpty":NewEmpty,
-        "NewName":NewName,
-        "GetName":GetName,
+		"NewEmpty":      NewEmpty,
+		"NewName":       NewName,
+		"GetName":       GetName,
 	})
 
 	code := accessing_structs + calling_interface
@@ -304,11 +305,11 @@ func Test_parsingConfig(t *testing.T) {
 	// can get the field itself as a Lua object, and so forth
 	opts := lo.GetObject("options")
 	assertEq(t, "opts", opts.Get("leave"), true)
-	// note that these Get methods understand nested fields ('chains')	
+	// note that these Get methods understand nested fields ('chains')
 	assertEq(t, "chain", lo.Get("options.leave"), true)
-	assertEq(t, "chain", lo.Get("options.tags.strong"), true)	
+	assertEq(t, "chain", lo.Get("options.tags.strong"), true)
 	// nested fields don't crash but return nil
-	assertEq(t, "chain", lo.Get("options.tags.extra.flakey"), nil)	
+	assertEq(t, "chain", lo.Get("options.tags.extra.flakey"), nil)
 	markd := lo.GetObject("marked")
 	assertEq(t, "marked1", markd.Geti(1), 1.0)
 	iter := lo.Iter()
@@ -316,14 +317,14 @@ func Test_parsingConfig(t *testing.T) {
 	for iter.Next() {
 		keys = append(keys, iter.Key.(string))
 	}
-	if ! compareNoOrder(keys,[]string{"baggins","options","marked","age","name"}) {
+	if !compareNoOrder(keys, []string{"baggins", "options", "marked", "age", "name"}) {
 		t.Error("keys were not the same!")
 	}
 
 }
 
 func findInSlice(ss []string, s string) int {
-	for i,v := range ss {
+	for i, v := range ss {
 		if v == s {
 			return i
 		}
@@ -331,12 +332,12 @@ func findInSlice(ss []string, s string) int {
 	return -1
 }
 
-func compareNoOrder (s1,s2 []string) bool {
+func compareNoOrder(s1, s2 []string) bool {
 	if len(s1) != len(s2) {
 		return false
 	}
-	for _,s := range s1 {
-		if findInSlice(s2,s) == -1 {
+	for _, s := range s1 {
+		if findInSlice(s2, s) == -1 {
 			return false
 		}
 	}
@@ -363,14 +364,14 @@ func Test_callingLua(t *testing.T) {
 	defer L.Close()
 
 	// the very versatile string.gsub function
-    lobj := NewLuaObjectFromName
+	lobj := NewLuaObjectFromName
 	gsub := lobj(L, "string.gsub")
 	// this is a Lua table... copies Go object, doesn't create proxy
 	replacements := NewLuaObjectFromValue(L, Map{
 		"NAME": "Dolly",
 		"HOME": "where you belong",
 	})
-    // we do this because string.gsub wants either a string,function or table for its second arg
+	// we do this because string.gsub wants either a string,function or table for its second arg
 	res, err := gsub.Call("hello $NAME go $HOME", "%$(%u+)", replacements)
 	if res == nil {
 		t.Error(err)
@@ -380,24 +381,23 @@ func Test_callingLua(t *testing.T) {
 	err = L.DoString(luaf)
 	if err != nil {
 		t.Error(err)
-	}    
+	}
 
 	fun := lobj(L, "Libs.fun")
 	res, err = fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
 		"name": "Joe",
 	})
 	assertEq(t, "fun", res, "ok")
-    
-    // can force the type and number of returned values using Callf
-    fun = lobj(L,"Libs.return_strings")
-    returns := Types([]string{})  // []reflect.Type
-    results,err := fun.Callf(returns)
-    // first returned result should be a slice of strings
-    strs := results[0].([]string)
-    if ! (strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
-        t.Error("did not get correct slice of strings!")
-    }
-    
+
+	// can force the type and number of returned values using Callf
+	fun = lobj(L, "Libs.return_strings")
+	returns := Types([]string{}) // []reflect.Type
+	results, err := fun.Callf(returns)
+	// first returned result should be a slice of strings
+	strs := results[0].([]string)
+	if !(strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
+		t.Error("did not get correct slice of strings!")
+	}
 
 	println("that's all folks!")
 
