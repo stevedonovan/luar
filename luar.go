@@ -249,10 +249,8 @@ func map__index(L *lua.State) int {
 	if ret.IsValid() {
 		GoToLua(L, ret.Type(), ret, false)
 		return 1
-	} else {
-		RaiseError(L, "cannot index this map with this type")
-		return 0
 	}
+	return 0
 }
 
 func map__newindex(L *lua.State) int {
