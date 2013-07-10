@@ -125,7 +125,7 @@ func GoLua(L *lua.State) int {
 			ch, t := valueOfProxy(LT, -2)
 
 			if LT.ToBoolean(-1) { // send on a channel
-				val := valueOf(LuaToGo(LT, t.Elem(), -3))
+				val := luaToGoValue(LT, t.Elem(), -3)
 				ch.Send(val)
 				res = LT.Resume(0)
 			} else { // receive on a channel
@@ -204,8 +204,8 @@ func sliceSub(L *lua.State) int {
 
 func sliceAppend(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
-	val := LuaToGo(L, nil, 2)
-	newslice := reflect.Append(slice, valueOf(val))
+	val := luaToGoValue(L, nil, 2)
+	newslice := reflect.Append(slice, val)
 	makeValueProxy(L, newslice, cSLICE_META)
 	return 1
 }
@@ -228,11 +228,11 @@ func slice__index(L *lua.State) int {
 func slice__newindex(L *lua.State) int {
 	slice, t := valueOfProxy(L, 1)
 	idx := L.ToInteger(2)
-	val := LuaToGo(L, t.Elem(), 3)
+	val := luaToGoValue(L, t.Elem(), 3)
 	if idx < 1 || idx > slice.Len() {
 		RaiseError(L, "slice set: index out of range")
 	}
-	slice.Index(idx - 1).Set(valueOf(val))
+	slice.Index(idx - 1).Set(val)
 	return 0
 }
 
@@ -244,8 +244,8 @@ func slicemap__len(L *lua.State) int {
 
 func map__index(L *lua.State) int {
 	val, t := valueOfProxy(L, 1)
-	key := LuaToGo(L, t.Key(), 2)
-	ret := val.MapIndex(valueOf(key))
+	key := luaToGoValue(L, t.Key(), 2)
+	ret := val.MapIndex(key)
 	if ret.IsValid() {
 		GoToLua(L, ret.Type(), ret, false)
 		return 1
@@ -255,9 +255,9 @@ func map__index(L *lua.State) int {
 
 func map__newindex(L *lua.State) int {
 	m, t := valueOfProxy(L, 1)
-	key := LuaToGo(L, t.Key(), 2)
-	val := LuaToGo(L, t.Elem(), 3)
-	m.SetMapIndex(valueOf(key), valueOf(val))
+	key := luaToGoValue(L, t.Key(), 2)
+	val := luaToGoValue(L, t.Elem(), 3)
+	m.SetMapIndex(key, val)
 	return 0
 }
 
@@ -351,8 +351,8 @@ func struct__newindex(L *lua.State) int {
 	}
 	field := st.FieldByName(name)
 	assertValid(L, field, st, name, "field")
-	val := LuaToGo(L, field.Type(), 3)
-	field.Set(valueOf(val))
+	val := luaToGoValue(L, field.Type(), 3)
+	field.Set(val)
 	return 0
 }
 
@@ -374,8 +374,8 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	slice := reflect.MakeSlice(t, n, n)
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
-		val := LuaToGo(L, te, -1)
-		slice.Index(i - 1).Set(valueOf(val))
+		val := luaToGoValue(L, te, -1)
+		slice.Index(i - 1).Set(val)
 		L.Pop(1)
 	}
 	return slice.Interface()
@@ -395,8 +395,8 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	}
 	for L.Next(idx) != 0 {
 		// key at -2, value at -1
-		key := valueOf(LuaToGo(L, tk, -2))
-		val := valueOf(LuaToGo(L, te, -1))
+		key := luaToGoValue(L, tk, -2)
+		val := luaToGoValue(L, te, -1)
 		m.SetMapIndex(key, val)
 		L.Pop(1)
 	}
@@ -420,7 +420,7 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 		key := L.ToString(-2)
 		f := ref.FieldByName(key)
 		if f.IsValid() {
-			val := valueOf(LuaToGo(L, f.Type(), -1))
+			val := luaToGoValue(L, f.Type(), -1)
 			f.Set(val)
 		}
 		L.Pop(1)
@@ -493,11 +493,11 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		{
 			L.PushNumber(val.Float())
 		}
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		{
 			L.PushNumber(float64(val.Int()))
 		}
-	case reflect.Uint, reflect.Uint8:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		{
 			L.PushNumber(float64(val.Uint()))
 		}
@@ -556,133 +556,241 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 // numerical and string types in a straightforward way, and will convert tables to
 // either map or slice types.
 func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
+	value := luaToGoValue(L, t, idx)
+	if value.IsValid() {
+		return value.Interface()
+	}
+	return nil
+}
+
+// A wrapper of luaToGo that return reflect.Value
+func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
+	if t == nil {
+		return valueOf(luaToGo(L, nil, idx))
+	}
+	return valueOf(luaToGo(L, t, idx)).Convert(t)
+}
+
+func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 	var value interface{}
 	var kind reflect.Kind
 
-	if t == nil { // let the Lua type drive the conversion...
-		switch L.Type(idx) {
-		case lua.LUA_TNIL:
-			return nil // well, d'oh
-		case lua.LUA_TBOOLEAN:
-			kind = reflect.Bool
-		case lua.LUA_TSTRING:
-			kind = reflect.String
-		case lua.LUA_TTABLE:
-			kind = reflect.Interface
-		case lua.LUA_TNUMBER:
-			kind = reflect.Float64
+	if t != nil { // let the Lua type drive the conversion...
+		if t.Kind() == reflect.Ptr {
+			kind = t.Elem().Kind()
+		} else if t.Kind() == reflect.Interface {
+			t = nil
+		} else {
+			kind = t.Kind()
+		}
+	}
+
+	switch L.Type(idx) {
+	case lua.LUA_TNIL:
+		if t == nil {
+			return nil
+		}
+		switch kind {
 		default:
+			{
+				RaiseError(L, "can't convert nil to "+t.String())
+				value = 20
+			}
+		}
+	case lua.LUA_TBOOLEAN:
+		if t == nil {
+			kind = reflect.Bool
+		}
+		switch kind {
+		case reflect.Bool:
+			{
+				ptr := new(bool)
+				*ptr = bool(L.ToBoolean(idx))
+				value = *ptr
+			}
+		default:
+			{
+				RaiseError(L, "can't convert type bool to "+t.String())
+				value = 20
+			}
+		}
+	case lua.LUA_TSTRING:
+		if t == nil {
+			kind = reflect.String
+		}
+		switch kind {
+		case reflect.String:
+			{
+				tos := L.ToString(idx)
+				ptr := new(string)
+				*ptr = tos
+				value = *ptr
+			}
+		default:
+			{
+				RaiseError(L, "can't convert type string to "+t.String())
+				value = 20
+			}
+		}
+	case lua.LUA_TNUMBER:
+		if t == nil {
+			kind = reflect.Float64
+		}
+		switch kind {
+		case reflect.Float64:
+			{
+				ptr := new(float64)
+				*ptr = L.ToNumber(idx)
+				value = *ptr
+			}
+		case reflect.Float32:
+			{
+				ptr := new(float32)
+				*ptr = float32(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Int:
+			{
+				ptr := new(int)
+				*ptr = int(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Int8:
+			{
+				ptr := new(int8)
+				*ptr = int8(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Int16:
+			{
+				ptr := new(int16)
+				*ptr = int16(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Int32:
+			{
+				ptr := new(int32)
+				*ptr = int32(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Int64:
+			{
+				ptr := new(int64)
+				*ptr = int64(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Uint:
+			{
+				ptr := new(uint)
+				*ptr = uint(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Uint8:
+			{
+				ptr := new(uint8)
+				*ptr = uint8(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Uint16:
+			{
+				ptr := new(uint16)
+				*ptr = uint16(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Uint32:
+			{
+				ptr := new(uint32)
+				*ptr = uint32(L.ToNumber(idx))
+				value = *ptr
+			}
+		case reflect.Uint64:
+			{
+				ptr := new(uint64)
+				*ptr = uint64(L.ToNumber(idx))
+				value = *ptr
+			}
+		default:
+			{
+				RaiseError(L, "can't convert type number to "+t.String())
+				value = 20
+			}
+		}
+	case lua.LUA_TTABLE:
+		if t == nil {
+			kind = reflect.Interface
+		}
+		fallthrough
+	default:
+		if t == nil && kind != reflect.Interface {
 			return NewLuaObject(L, idx)
 		}
-	} else if t.Kind() == reflect.Ptr {
-		kind = t.Elem().Kind()
-	} else {
-		kind = t.Kind()
-	}
-
-	switch kind {
-	// various numerical types are tedious but straightforward
-	case reflect.Float64:
-		{
-			ptr := new(float64)
-			*ptr = L.ToNumber(idx)
-			value = *ptr
-		}
-	case reflect.Float32:
-		{
-			ptr := new(float32)
-			*ptr = float32(L.ToNumber(idx))
-			value = *ptr
-		}
-	case reflect.Int:
-		{
-			ptr := new(int)
-			*ptr = int(L.ToNumber(idx))
-			value = *ptr
-		}
-	case reflect.Int8:
-		{
-			ptr := new(byte)
-			*ptr = byte(L.ToNumber(idx))
-			value = *ptr
-		}
-	case reflect.String:
-		{
-			tos := L.ToString(idx)
-			ptr := new(string)
-			*ptr = tos
-			value = *ptr
-		}
-	case reflect.Bool:
-		{
-			ptr := new(bool)
-			*ptr = bool(L.ToBoolean(idx))
-			value = *ptr
-		}
-	case reflect.Slice:
-		{
-			// if we get a table, then copy its values to a new slice
-			if L.IsTable(idx) {
-				value = CopyTableToSlice(L, t, idx)
-			} else {
-				value = unwrapProxy(L, idx)
-			}
-		}
-	case reflect.Map:
-		{
-			if L.IsTable(idx) {
-				value = CopyTableToMap(L, t, idx)
-			} else {
-				value = unwrapProxy(L, idx)
-			}
-		}
-	case reflect.Struct:
-		{
-			if L.IsTable(idx) {
-				value = CopyTableToStruct(L, t, idx)
-			} else {
-				value = unwrapProxy(L, idx)
-			}
-		}
-	case reflect.Interface:
-		{
-			if L.IsTable(idx) {
-				// have to make an executive decision here: tables with non-zero
-				// length are assumed to be slices!
-				if L.ObjLen(idx) > 0 {
-					value = CopyTableToSlice(L, nil, idx)
+		switch kind {
+		case reflect.Slice:
+			{
+				// if we get a table, then copy its values to a new slice
+				if L.IsTable(idx) {
+					value = CopyTableToSlice(L, t, idx)
 				} else {
-					value = CopyTableToMap(L, nil, idx)
+					value = unwrapProxy(L, idx)
 				}
-			} else if L.IsNumber(idx) {
-				value = L.ToNumber(idx)
-			} else if L.IsString(idx) {
-				value = L.ToString(idx)
-			} else if L.IsBoolean(idx) {
-				value = L.ToBoolean(idx)
-			} else if L.IsNil(idx) {
-				return nil
-			} else {
-				value = unwrapProxy(L, idx)
+			}
+		case reflect.Map:
+			{
+				if L.IsTable(idx) {
+					value = CopyTableToMap(L, t, idx)
+				} else {
+					value = unwrapProxy(L, idx)
+				}
+			}
+		case reflect.Struct:
+			{
+				if L.IsTable(idx) {
+					value = CopyTableToStruct(L, t, idx)
+				} else {
+					value = unwrapProxy(L, idx)
+				}
+			}
+		case reflect.Interface:
+			{
+				if L.IsTable(idx) {
+					// have to make an executive decision here: tables with non-zero
+					// length are assumed to be slices!
+					if L.ObjLen(idx) > 0 {
+						value = CopyTableToSlice(L, nil, idx)
+					} else {
+						value = CopyTableToMap(L, nil, idx)
+					}
+				} else if L.IsNumber(idx) {
+					value = L.ToNumber(idx)
+				} else if L.IsString(idx) {
+					value = L.ToString(idx)
+				} else if L.IsBoolean(idx) {
+					value = L.ToBoolean(idx)
+				} else if L.IsNil(idx) {
+					return nil
+				} else {
+					value = unwrapProxy(L, idx)
+				}
+			}
+		default:
+			{
+				RaiseError(L, "unhandled type "+t.String())
+				value = 20
 			}
 		}
-	default:
-		{
-			RaiseError(L, "unhandled type "+t.String())
-			value = 20
-		}
-
 	}
+	// various numerical types are tedious but straightforward
+
 	return value
 }
 
 func functionArgRetTypes(funt reflect.Type) (targs, tout []reflect.Type) {
 	targs = make([]reflect.Type, funt.NumIn())
-	for i, _ := range targs {
+	for i := range targs {
 		targs[i] = funt.In(i)
 	}
 	tout = make([]reflect.Type, funt.NumOut())
-	for i, _ := range tout {
+	for i := range tout {
 		tout[i] = funt.Out(i)
 	}
 	return
