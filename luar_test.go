@@ -38,7 +38,7 @@ func squares(args []int) (res map[string]int) {
 
 func keys(m map[string]interface{}) (res []string) {
 	res = make([]string, 0)
-	for k, _ := range m {
+	for k := range m {
 		res = append(res, k)
 	}
 	return
