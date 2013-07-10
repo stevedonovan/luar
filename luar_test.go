@@ -3,6 +3,7 @@ package luar
 import "testing"
 import "strconv"
 import "os"
+import "reflect"
 
 // I _still_ like asserts ;)
 func assertEq(t *testing.T, msg string, v1, v2 interface{}) {
@@ -400,5 +401,50 @@ func Test_callingLua(t *testing.T) {
 	}
 
 	println("that's all folks!")
+
+}
+
+type A int
+
+const gtypes1 = `
+a = 10
+assert(m.test == 'art')
+assert(m.Test == nil)
+`
+
+const gtypes2 = `
+print(m[5])
+`
+
+func Test_passingTypes(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	a := A(5)
+	m := map[string]string{"test": "art"}
+
+	Register(L, "", Map{
+		"a": a,
+		"m": m,
+	})
+
+	err := L.DoString(gtypes1)
+	if err != nil {
+		t.Error(err)
+	}
+
+	L.GetGlobal("a")
+	aType := reflect.TypeOf(a)
+	al := LuaToGo(L, aType, -1)
+	alType := reflect.TypeOf(al)
+
+	if alType != aType {
+		t.Error("types were not converted properly")
+	}
+
+	err = L.DoString(gtypes2)
+	if err == nil {
+		t.Error("must not be able to index map with wrong type!")
+	}
 
 }

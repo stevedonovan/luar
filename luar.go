@@ -565,10 +565,11 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 
 // A wrapper of luaToGo that return reflect.Value
 func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
-	if t == nil {
-		return valueOf(luaToGo(L, nil, idx))
+	val := valueOf(luaToGo(L, t, idx))
+	if t != nil && val.Type() != t {
+		val = val.Convert(t)
 	}
-	return valueOf(luaToGo(L, t, idx)).Convert(t)
+	return val
 }
 
 func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
