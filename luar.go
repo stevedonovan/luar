@@ -4,9 +4,9 @@ package luar
 
 import lua "github.com/aarzilli/golua/lua"
 import "strings"
-import "strconv"
 import "reflect"
 import "unsafe"
+import "fmt"
 
 // raise a Lua error from Go code
 func RaiseError(L *lua.State, msg string) {
@@ -74,14 +74,14 @@ func unwrapProxy(L *lua.State, idx int) interface{} {
 	return nil
 }
 
-var itoa = strconv.Itoa
+var sprintf = fmt.Sprintf
 
 func unwrapProxyOrComplain(L *lua.State, idx int) interface{} {
 	if isValueProxy(L, idx) {
 		v, _ := valueOfProxy(L, idx)
 		return v.Interface()
 	} else {
-		RaiseError(L, "arg #"+itoa(idx)+" is not a Go object!")
+		RaiseError(L, sprintf("arg #%d is not a Go object!", idx))
 		return nil
 	}
 }
@@ -653,7 +653,7 @@ func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t refle
 	} else {
 		types = kind.String()
 	}
-	RaiseError(L, "arg # "+itoa(idx)+" cannot convert "+msg+" to "+types)
+	RaiseError(L, sprintf("arg #%d cannot convert %s to %s", idx, msg, types))
 }
 
 func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
@@ -948,7 +948,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Value {
 	defer func() {
 		if x := recover(); x != nil {
-			RaiseError(L, "error "+x.(string))
+			RaiseError(L, sprintf("error %s", x))
 		}
 	}()
 	resv := funv.Call(args)
