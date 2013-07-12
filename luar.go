@@ -96,8 +96,18 @@ func proxyType(L *lua.State) int {
 	return 1
 }
 
-func unwrapProxyValue(L *lua.State, idx int) reflect.Value {
-	return valueOf(unwrapProxy(L, idx))
+func proxyRaw(L *lua.State) int {
+	v := unwrapProxyOrComplain(L, 1)
+	t := reflect.TypeOf(v)
+	tp := isPrimitiveDerived(t, t.Kind())
+	if tp != nil {
+		val := valueOf(v)
+		val = val.Convert(tp)
+		GoToLua(L, nil, val, false)
+	} else {
+		L.PushNil()
+	}
+	return 1
 }
 
 func channel_send(L *lua.State) int {
@@ -481,6 +491,50 @@ func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 	return 2
 }
 
+// closest we'll get to a typeof operator...
+func typeof(v interface{}) reflect.Type {
+	return reflect.TypeOf(v).Elem()
+}
+
+var types = []reflect.Type{
+	nil, //Invalid Kind = iota
+	typeof((*bool)(nil)),
+	typeof((*int)(nil)),
+	typeof((*int8)(nil)),
+	typeof((*int16)(nil)),
+	typeof((*int32)(nil)),
+	typeof((*int64)(nil)),
+	typeof((*uint)(nil)),
+	typeof((*uint8)(nil)),
+	typeof((*uint16)(nil)),
+	typeof((*uint32)(nil)),
+	typeof((*uint64)(nil)),
+	nil, //Uintptr
+	typeof((*float32)(nil)),
+	typeof((*float64)(nil)),
+	nil, //Complex64
+	nil, //Complex128
+	nil, //Array
+	nil, //Chan
+	nil, //Func
+	nil, //Interface
+	nil, //Map
+	nil, //Ptr
+	nil, //Slice
+	typeof((*string)(nil)),
+	nil, //Struct
+	nil, //UnsafePointer
+}
+
+func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
+	pt := types[int(kind)]
+	if pt != nil && pt != t {
+		return pt
+	} else {
+		return nil
+	}
+}
+
 // Push a Go value 'val' of type 't' on the Lua stack.
 // If we haven't been given a concrete type, use the type of the value
 // and unbox any interfaces.  You can force slices and maps to be copied
@@ -500,8 +554,15 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+	kind := t.Kind()
 
-	switch t.Kind() {
+	// underlying type is 'primitive' ? wrap it as a proxy!
+	if isPrimitiveDerived(t, kind) != nil {
+		makeValueProxy(L, val, cINTERFACE_META)
+		return
+	}
+
+	switch kind {
 	case reflect.Float64, reflect.Float32:
 		{
 			L.PushNumber(val.Float())
@@ -793,7 +854,8 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				}
 			}
 		default:
-			cannotConvert(L, idx, "unknown", kind, t)
+			value = unwrapProxyOrComplain(L, idx)
+			//cannotConvert(L,idx,"unknown",kind,t)
 		}
 	}
 
@@ -1118,11 +1180,11 @@ func Lookup(L *lua.State, path string, idx int) {
 }
 
 func map2table(L *lua.State) int {
-	return CopyMapToTable(L, valueOf(unwrapProxy(L, 1)))
+	return CopyMapToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
 }
 
 func slice2table(L *lua.State) int {
-	return CopySliceToTable(L, valueOf(unwrapProxy(L, 1)))
+	return CopySliceToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
 }
 
 func makeMap(L *lua.State) int {
@@ -1176,6 +1238,7 @@ func Init() *lua.State {
 		"type":        proxyType,
 		"sub":         sliceSub,
 		"append":      sliceAppend,
+		"raw":         proxyRaw,
 	})
 	Register(L, "luar", Map{
 		"value": reflect.ValueOf,

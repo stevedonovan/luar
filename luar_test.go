@@ -406,8 +406,15 @@ func Test_callingLua(t *testing.T) {
 
 type A int
 
+func (a A) String() string {
+	return strconv.Itoa(int(a))
+}
+
 const gtypes1 = `
-a = 10
+--// can call methods on objects 'derived' from primitive types
+assert(a.String() == '5')
+--// get underlying primitive value with luar.raw
+assert(luar.raw(a) == 5)
 assert(m.test == 'art')
 assert(m.Test == nil)
 `
@@ -439,7 +446,7 @@ func Test_passingTypes(t *testing.T) {
 	alType := reflect.TypeOf(al)
 
 	if alType != aType {
-		//t.Error("types were not converted properly")
+		t.Error("types were not converted properly")
 	}
 
 	err = L.DoString(gtypes2)
