@@ -4,6 +4,7 @@ package luar
 
 import lua "github.com/aarzilli/golua/lua"
 import "strings"
+import "strconv"
 import "reflect"
 import "unsafe"
 
@@ -71,6 +72,18 @@ func unwrapProxy(L *lua.State, idx int) interface{} {
 		return v.Interface()
 	}
 	return nil
+}
+
+var itoa = strconv.Itoa
+
+func unwrapProxyOrComplain(L *lua.State, idx int) interface{} {
+	if isValueProxy(L, idx) {
+		v, _ := valueOfProxy(L, idx)
+		return v.Interface()
+	} else {
+		RaiseError(L, "arg #"+itoa(idx)+" is not a Go object!")
+		return nil
+	}
 }
 
 func proxyType(L *lua.State) int {
@@ -566,10 +579,20 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 // A wrapper of luaToGo that return reflect.Value
 func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
 	val := valueOf(luaToGo(L, t, idx))
-	if t != nil && val.Type() != t {
-		val = val.Convert(t)
-	}
+	//~ if t != nil && val.Type() != t {
+	//~ val = val.Convert(t)
+	//~ }
 	return val
+}
+
+func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t reflect.Type) {
+	types := ""
+	if t != nil {
+		types = t.String()
+	} else {
+		types = kind.String()
+	}
+	RaiseError(L, "arg # "+itoa(idx)+" cannot convert "+msg+" to "+types)
 }
 
 func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
@@ -593,10 +616,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		switch kind {
 		default:
-			{
-				RaiseError(L, "can't convert nil to "+t.String())
-				value = 20
-			}
+			cannotConvert(L, idx, "nil", kind, t)
 		}
 	case lua.LUA_TBOOLEAN:
 		if t == nil {
@@ -610,10 +630,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				value = *ptr
 			}
 		default:
-			{
-				RaiseError(L, "can't convert type bool to "+t.String())
-				value = 20
-			}
+			cannotConvert(L, idx, "bool", kind, t)
 		}
 	case lua.LUA_TSTRING:
 		if t == nil {
@@ -628,10 +645,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				value = *ptr
 			}
 		default:
-			{
-				RaiseError(L, "can't convert type string to "+t.String())
-				value = 20
-			}
+			cannotConvert(L, idx, "string", kind, t)
 		}
 	case lua.LUA_TNUMBER:
 		if t == nil {
@@ -711,10 +725,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				value = *ptr
 			}
 		default:
-			{
-				RaiseError(L, "can't convert type number to "+t.String())
-				value = 20
-			}
+			cannotConvert(L, idx, "number", kind, t)
 		}
 	case lua.LUA_TTABLE:
 		if t == nil {
@@ -722,38 +733,46 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		fallthrough
 	default:
-		if t == nil && kind != reflect.Interface {
-			return NewLuaObject(L, idx)
+		istable := L.IsTable(idx)
+		// if we don't know the type and the Lua object is userdata,
+		// then it might be a proxy for a Go object. Otherwise wrap
+		// it up as a LuaObject.
+		if t == nil && !istable {
+			if isValueProxy(L, idx) {
+				return unwrapProxy(L, idx)
+			} else {
+				return NewLuaObject(L, idx)
+			}
 		}
 		switch kind {
 		case reflect.Slice:
 			{
 				// if we get a table, then copy its values to a new slice
-				if L.IsTable(idx) {
+				if istable {
 					value = CopyTableToSlice(L, t, idx)
 				} else {
-					value = unwrapProxy(L, idx)
+					value = unwrapProxyOrComplain(L, idx)
 				}
 			}
 		case reflect.Map:
 			{
-				if L.IsTable(idx) {
+				if istable {
 					value = CopyTableToMap(L, t, idx)
 				} else {
-					value = unwrapProxy(L, idx)
+					value = unwrapProxyOrComplain(L, idx)
 				}
 			}
 		case reflect.Struct:
 			{
-				if L.IsTable(idx) {
+				if istable {
 					value = CopyTableToStruct(L, t, idx)
 				} else {
-					value = unwrapProxy(L, idx)
+					value = unwrapProxyOrComplain(L, idx)
 				}
 			}
 		case reflect.Interface:
 			{
-				if L.IsTable(idx) {
+				if istable {
 					// have to make an executive decision here: tables with non-zero
 					// length are assumed to be slices!
 					if L.ObjLen(idx) > 0 {
@@ -770,17 +789,13 @@ func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				} else if L.IsNil(idx) {
 					return nil
 				} else {
-					value = unwrapProxy(L, idx)
+					value = unwrapProxyOrComplain(L, idx)
 				}
 			}
 		default:
-			{
-				RaiseError(L, "unhandled type "+t.String())
-				value = 20
-			}
+			cannotConvert(L, idx, "unknown", kind, t)
 		}
 	}
-	// various numerical types are tedious but straightforward
 
 	return value
 }
