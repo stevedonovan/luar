@@ -4,6 +4,7 @@ import "testing"
 import "strconv"
 import "os"
 import "reflect"
+import "runtime"
 
 // I _still_ like asserts ;)
 func assertEq(t *testing.T, msg string, v1, v2 interface{}) {
@@ -417,6 +418,17 @@ assert(a.String() == '5')
 assert(luar.raw(a) == 5)
 assert(m.test == 'art')
 assert(m.Test == nil)
+--// test to see if Go values are properly anchored
+local s = luar.slice(2)
+s[1] = 10
+s[2] = 20
+gc()
+assert(#s == 2 and s[1]==10 and s[2]==20)
+s = nil
+collectgarbage()
+collectgarbage()
+--//assert(#s == 2 and s[1]==10 and s[2]==20)
+
 `
 
 const gtypes2 = `
@@ -433,6 +445,7 @@ func Test_passingTypes(t *testing.T) {
 	Register(L, "", Map{
 		"a": a,
 		"m": m,
+		"gc":runtime.GC,
 	})
 
 	err := L.DoString(gtypes1)

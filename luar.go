@@ -36,13 +36,23 @@ const (
 	cCHANNEL_META   = "ChannelMT"
 )
 
+var proxyMap = map[*valueProxy]reflect.Value {}
+
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	rawptr := L.NewUserdata(uintptr(unsafe.Sizeof(valueProxy{})))
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
 	ptr.t = val.Type()
+	proxyMap[ptr] = val
 	L.LGetMetaTable(proxyMT)
 	L.SetMetaTable(-2)
+}
+
+func proxy__gc (L *lua.State) int {
+	vp := (*valueProxy)(L.ToUserdata(1))
+	//fmt.Println("delete",vp)
+	delete(proxyMap,vp)
+	return 0
 }
 
 var valueOf = reflect.ValueOf
@@ -170,6 +180,8 @@ func MakeChannel(L *lua.State) int {
 
 func initializeProxies(L *lua.State) {
 	flagValue := func() {
+		L.SetMetaMethod("__tostring", proxy__tostring)
+		L.SetMetaMethod("__gc",proxy__gc)
 		L.PushBoolean(true)
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
@@ -179,23 +191,19 @@ func initializeProxies(L *lua.State) {
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__ipairs", slice__ipairs)
-	L.SetMetaMethod("__tostring", proxy__tostring)
 	flagValue()
 	L.NewMetaTable(cMAP_META)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__pairs", map__pairs)
-	L.SetMetaMethod("__tostring", proxy__tostring)
 	flagValue()
 	L.NewMetaTable(cSTRUCT_META)
 	L.SetMetaMethod("__index", struct__index)
 	L.SetMetaMethod("__newindex", struct__newindex)
-	L.SetMetaMethod("__tostring", proxy__tostring)
 	flagValue()
 	L.NewMetaTable(cINTERFACE_META)
 	L.SetMetaMethod("__index", interface__index)
-	L.SetMetaMethod("__tostring", proxy__tostring)
 	flagValue()
 	L.NewMetaTable(cCHANNEL_META)
 	//~ RegisterFunctions(L,"*",FMap {
