@@ -50,7 +50,6 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 
 func proxy__gc (L *lua.State) int {
 	vp := (*valueProxy)(L.ToUserdata(1))
-	//fmt.Println("delete",vp)
 	delete(proxyMap,vp)
 	return 0
 }
@@ -182,6 +181,7 @@ func initializeProxies(L *lua.State) {
 	flagValue := func() {
 		L.SetMetaMethod("__tostring", proxy__tostring)
 		L.SetMetaMethod("__gc",proxy__gc)
+		L.SetMetaMethod("__eq",proxy__eq)
 		L.PushBoolean(true)
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
@@ -222,6 +222,13 @@ func initializeProxies(L *lua.State) {
 func proxy__tostring(L *lua.State) int {
 	obj, _ := valueOfProxy(L, 1)
 	L.PushString(obj.Type().String())
+	return 1
+}
+
+func proxy__eq(L *lua.State) int {
+	o1, _ := valueOfProxy(L, 1)	
+	o2, _ := valueOfProxy(L, 1)
+	L.PushBoolean(o1 == o2)
 	return 1
 }
 
@@ -389,16 +396,33 @@ func struct__newindex(L *lua.State) int {
 
 // end of proxy code
 
+type Null int
+
 var (
-	tslice = make([]interface{}, 0)
-	tmap   = make(map[string]interface{})
+	tslice = typeof((*[]interface{})(nil))
+	tmap = typeof((*map[string]interface{})(nil))
+	null = Null(0)
+	nullv = valueOf(null)
+	nullables = map[reflect.Kind]bool {
+		reflect.Chan:true,
+		reflect.Func:true,
+		reflect.Interface:true,
+		reflect.Map:true,
+		reflect.Ptr:true,
+		reflect.Slice:true,
+	}
 )
+	
+func isNil(val reflect.Value) bool {
+	kind := val.Type().Kind()
+	return nullables[kind] && val.IsNil()
+}
 
 // Return the Lua table at 'idx' as a copied Go slice. If 't' is nil then the slice
 // type is []interface{}
 func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	if t == nil {
-		t = reflect.TypeOf(tslice)
+		t = tslice
 	}
 	te := t.Elem()
 	n := int(L.ObjLen(idx))
@@ -406,6 +430,9 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
 		val := luaToGoValue(L, te, -1)
+		if val == nullv {
+			val = reflect.Zero(te)
+		}
 		slice.Index(i - 1).Set(val)
 		L.Pop(1)
 	}
@@ -416,7 +443,7 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 // type is map[string]interface{}
 func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	if t == nil {
-		t = reflect.TypeOf(tmap)
+		t = tmap
 	}
 	te, tk := t.Elem(), t.Key()
 	m := reflect.MakeMap(t)
@@ -428,6 +455,9 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 		// key at -2, value at -1
 		key := luaToGoValue(L, tk, -2)
 		val := luaToGoValue(L, te, -1)
+		if val == nullv {
+			val = reflect.Zero(te)
+		}		
 		m.SetMapIndex(key, val)
 		L.Pop(1)
 	}
@@ -462,14 +492,19 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	return s.Elem().Interface()
 }
 
-// Copy a Go slice to a Lua table
+// Copy a Go slice to a Lua table. nils in both slices and structs
+// are represented as luar.null. Defines luar.slice2table
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	if vslice.IsValid() && vslice.Type().Kind() == reflect.Slice {
 		n := vslice.Len()
 		L.CreateTable(n, 0)
 		for i := 0; i < n; i++ {
 			L.PushInteger(int64(i + 1))
-			GoToLua(L, nil, vslice.Index(i), true)
+			v := vslice.Index(i)
+			if isNil(v) {
+				v = nullv
+			}
+			GoToLua(L, nil, v, true)
 			L.SetTable(-3)
 		}
 		return 1
@@ -480,15 +515,18 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	return 2
 }
 
-// Copy a Go map to a Lua table
+// Copy a Go map to a Lua table, Defines luar.map2table
 func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 	if vmap.IsValid() && vmap.Type().Kind() == reflect.Map {
 		n := vmap.Len()
 		L.CreateTable(0, n)
 		for _, key := range vmap.MapKeys() {
-			val := vmap.MapIndex(key)
+			v := vmap.MapIndex(key)
 			GoToLua(L, nil, key, false)
-			GoToLua(L, nil, val, true)
+			if isNil(v) {
+				v = nullv
+			}			
+			GoToLua(L, nil, v, true)
 			L.SetTable(-3)
 		}
 		return 1
@@ -1196,14 +1234,14 @@ func slice2table(L *lua.State) int {
 }
 
 func makeMap(L *lua.State) int {
-	m := reflect.MakeMap(reflect.TypeOf(tmap))
+	m := reflect.MakeMap(tmap)
 	makeValueProxy(L, m, cMAP_META)
 	return 1
 }
 
 func makeSlice(L *lua.State) int {
 	n := L.OptInteger(1, 0)
-	s := reflect.MakeSlice(reflect.TypeOf(tslice), n, n+1)
+	s := reflect.MakeSlice(tslice, n, n+1)
 	makeValueProxy(L, s, cSLICE_META)
 	return 1
 }
@@ -1247,6 +1285,7 @@ func Init() *lua.State {
 		"sub":         sliceSub,
 		"append":      sliceAppend,
 		"raw":         proxyRaw,
+		"null":     null,
 	})
 	Register(L, "luar", Map{
 		"value": reflect.ValueOf,

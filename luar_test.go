@@ -359,6 +359,13 @@ end
 function Libs.return_strings()
     return {'one','two','three'}
 end
+function Libs.return_strings_null()
+    return {'one',luar.null,'three'}
+end
+function Libs.return_slices_null()
+    return {{'one'},luar.null,{'three'}}
+end
+
 `
 
 func Test_callingLua(t *testing.T) {
@@ -400,6 +407,22 @@ func Test_callingLua(t *testing.T) {
 	if !(strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
 		t.Error("did not get correct slice of strings!")
 	}
+	
+	// we get an empty string corresponding to a luar.null in a table,
+	// since that's the empty 'zero' value for a string.
+	fun = lobj(L, "Libs.return_strings_null")
+	results, err = fun.Callf(returns)
+	strs = results[0].([]string)
+	if !(strs[0] == "one" && strs[1] == "" && strs[2] == "three") {
+		t.Error("did not get correct slice of null strings!")
+	}
+	
+	fun = lobj(L, "Libs.return_slices_null")
+	results, err = fun.Callf(Types([][]string{}))
+	sstrs := results[0].([][]string)
+	if !(sstrs[0][0] == "one" && sstrs[1] == nil && sstrs[2][0] == "three") {
+		t.Error("did not get correct slice of slices!")
+	}
 
 	println("that's all folks!")
 
@@ -427,10 +450,16 @@ assert(#s == 2 and s[1]==10 and s[2]==20)
 s = nil
 collectgarbage()
 collectgarbage()
---//assert(#s == 2 and s[1]==10 and s[2]==20)
-
+--// nils in Go slices & maps represented by luar.null
+tab = luar.slice2table(sl)
+assert(#tab == 4)
+assert(tab[1] == luar.null)
+assert(tab[3] == luar.null)
+tab = luar.map2table(mn)
+assert(tab.bee == luar.null and tab.dee == luar.null)
 `
 
+// accessing map with wrong key type must fail
 const gtypes2 = `
 print(m[5])
 `
@@ -441,11 +470,28 @@ func Test_passingTypes(t *testing.T) {
 
 	a := A(5)
 	m := map[string]string{"test": "art"}
+	
+	// a slice with nils!
+    sl := [][]int {
+        nil, 
+        []int {1,2},
+		nil,
+		[]int {10,20},        
+    }
+	
+	mn := map[string][]int {
+		"ay": []int{1,2},
+		"bee":nil,
+		"cee":[]int{10,20},
+		"dee":nil,
+	}
 
 	Register(L, "", Map{
 		"a": a,
 		"m": m,
 		"gc":runtime.GC,
+		"sl":sl,
+		"mn":mn,
 	})
 
 	err := L.DoString(gtypes1)
@@ -466,5 +512,5 @@ func Test_passingTypes(t *testing.T) {
 	if err == nil {
 		t.Error("must not be able to index map with wrong type!")
 	}
-
+	
 }
