@@ -226,9 +226,12 @@ func proxy__tostring(L *lua.State) int {
 }
 
 func proxy__eq(L *lua.State) int {
-	o1, _ := valueOfProxy(L, 1)
-	o2, _ := valueOfProxy(L, 1)
-	L.PushBoolean(o1 == o2)
+	v1, t1 := valueOfProxy(L, 1)
+	v2, t2 := valueOfProxy(L, 2)
+	if t1 != t2 {
+		RaiseError(L, sprintf("mismatched types %s and %s", t1, t2))
+	}
+	L.PushBoolean(v1.Interface() == v2.Interface())
 	return 1
 }
 
