@@ -18,7 +18,7 @@ func RaiseError(L *lua.State, msg string) {
 
 func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
 	if !v.IsValid() {
-		RaiseError(L, "no "+what+" named `"+name+"` for type "+parent.Type().String())
+		RaiseError(L, sprintf("no %s named `%s` for type %s", what, name, parent.Type()))
 	}
 }
 
@@ -672,24 +672,9 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	}
 }
 
-// Convert a Lua value 'idx' on the stack to the Go value of desired type 't'. Handles
-// numerical and string types in a straightforward way, and will convert tables to
-// either map or slice types.
-func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
-	value := luaToGoValue(L, t, idx)
-	if value.IsValid() {
-		return value.Interface()
-	}
-	return nil
-}
-
 // A wrapper of luaToGo that return reflect.Value
 func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
-	val := valueOf(luaToGo(L, t, idx))
-	//~ if t != nil && val.Type() != t {
-	//~ val = val.Convert(t)
-	//~ }
-	return val
+	return valueOf(LuaToGo(L, t, idx))
 }
 
 func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t reflect.Type) {
@@ -702,7 +687,10 @@ func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t refle
 	RaiseError(L, sprintf("arg #%d cannot convert %s to %s", idx, msg, types))
 }
 
-func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
+// Convert a Lua value 'idx' on the stack to the Go value of desired type 't'. Handles
+// numerical and string types in a straightforward way, and will convert tables to
+// either map or slice types.
+func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 	var value interface{}
 	var kind reflect.Kind
 
