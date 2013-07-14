@@ -407,7 +407,7 @@ func Test_callingLua(t *testing.T) {
 	if !(strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
 		t.Error("did not get correct slice of strings!")
 	}
-	
+
 	// we get an empty string corresponding to a luar.null in a table,
 	// since that's the empty 'zero' value for a string.
 	fun = lobj(L, "Libs.return_strings_null")
@@ -416,7 +416,7 @@ func Test_callingLua(t *testing.T) {
 	if !(strs[0] == "one" && strs[1] == "" && strs[2] == "three") {
 		t.Error("did not get correct slice of null strings!")
 	}
-	
+
 	fun = lobj(L, "Libs.return_slices_null")
 	results, err = fun.Callf(Types([][]string{}))
 	sstrs := results[0].([][]string)
@@ -470,28 +470,28 @@ func Test_passingTypes(t *testing.T) {
 
 	a := A(5)
 	m := map[string]string{"test": "art"}
-	
+
 	// a slice with nils!
-    sl := [][]int {
-        nil, 
-        []int {1,2},
+	sl := [][]int{
 		nil,
-		[]int {10,20},        
-    }
-	
-	mn := map[string][]int {
-		"ay": []int{1,2},
-		"bee":nil,
-		"cee":[]int{10,20},
-		"dee":nil,
+		{1, 2},
+		nil,
+		{10, 20},
+	}
+
+	mn := map[string][]int{
+		"ay":  {1, 2},
+		"bee": nil,
+		"cee": {10, 20},
+		"dee": nil,
 	}
 
 	Register(L, "", Map{
-		"a": a,
-		"m": m,
-		"gc":runtime.GC,
-		"sl":sl,
-		"mn":mn,
+		"a":  a,
+		"m":  m,
+		"gc": runtime.GC,
+		"sl": sl,
+		"mn": mn,
 	})
 
 	err := L.DoString(gtypes1)
@@ -512,5 +512,5 @@ func Test_passingTypes(t *testing.T) {
 	if err == nil {
 		t.Error("must not be able to index map with wrong type!")
 	}
-	
+
 }
