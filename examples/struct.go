@@ -17,16 +17,18 @@ func config(cfg *Config) {
 }
 
 // an example of using Lua for configuration...
+// Note that Lua names will be automatically
+// title-cased!
 const setup = `
 config {
-  Baggins = true,
-  Age = 24,
-  Name = 'dumbo' ,
-  Ponies = {'whisper','fartarse'},
-  Father = {
-      Baggins = false,
-      Age = 77,
-      Name = 'Wombo',
+  baggins = true,
+  age = 24,
+  name = 'dumbo' ,
+  ponies = {'whisper','fartarse'},
+  father = {
+      baggins = false,
+      age = 77,
+      name = 'Wombo',
   }
 }
 `

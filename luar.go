@@ -479,7 +479,7 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	}
 	for L.Next(idx) != 0 {
 		key := L.ToString(-2)
-		f := ref.FieldByName(key)
+		f := ref.FieldByName(strings.Title(key))
 		if f.IsValid() {
 			val := luaToGoValue(L, f.Type(), -1)
 			f.Set(val)
