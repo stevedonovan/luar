@@ -407,7 +407,7 @@ func Test_callingLua(t *testing.T) {
 	if !(strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
 		t.Error("did not get correct slice of strings!")
 	}
-	
+
 	// we get an empty string corresponding to a luar.null in a table,
 	// since that's the empty 'zero' value for a string.
 	fun = lobj(L, "Libs.return_strings_null")
@@ -416,7 +416,7 @@ func Test_callingLua(t *testing.T) {
 	if !(strs[0] == "one" && strs[1] == "" && strs[2] == "three") {
 		t.Error("did not get correct slice of null strings!")
 	}
-	
+
 	fun = lobj(L, "Libs.return_slices_null")
 	results, err = fun.Callf(Types([][]string{}))
 	sstrs := results[0].([][]string)
@@ -430,17 +430,32 @@ func Test_callingLua(t *testing.T) {
 
 type A int
 
+func NewA(i int) A {
+	return A(i)
+}
+
 func (a A) String() string {
 	return strconv.Itoa(int(a))
 }
+
+type B int
 
 const gtypes1 = `
 --// can call methods on objects 'derived' from primitive types
 assert(a.String() == '5')
 --// get underlying primitive value with luar.raw
 assert(luar.raw(a) == 5)
+--// various ops also should work same as primitive
+assert(new_a(8) == new_a(8))
+assert(new_a(5) ~= new_a(6))
+-- assert(new_a(5) < new_a(8))
+-- assert(new_a(8) > new_a(5))
+-- assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))
+
 assert(m.test == 'art')
+--// should be nil if nonexistent property referenced
 assert(m.Test == nil)
+
 --// test to see if Go values are properly anchored
 local s = luar.slice(2)
 s[1] = 10
@@ -450,13 +465,14 @@ assert(#s == 2 and s[1]==10 and s[2]==20)
 s = nil
 collectgarbage()
 collectgarbage()
+
 --// nils in Go slices & maps represented by luar.null
 tab = luar.slice2table(sl)
 assert(#tab == 4)
 assert(tab[1] == luar.null)
 assert(tab[3] == luar.null)
-tab = luar.map2table(mn)
-assert(tab.bee == luar.null and tab.dee == luar.null)
+tab2 = luar.map2table(mn)
+assert(tab2.bee == luar.null and tab2.dee == luar.null)
 `
 
 // accessing map with wrong key type must fail
@@ -464,34 +480,42 @@ const gtypes2 = `
 print(m[5])
 `
 
+// binary op with different type must fail
+const gtypes3 = `
+assert(b == new_a(9))
+`
+
 func Test_passingTypes(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
 	a := A(5)
+	b := B(9)
 	m := map[string]string{"test": "art"}
-	
+
 	// a slice with nils!
-    sl := [][]int {
-        nil, 
-        []int {1,2},
+	sl := [][]int{
 		nil,
-		[]int {10,20},        
-    }
-	
-	mn := map[string][]int {
-		"ay": []int{1,2},
-		"bee":nil,
-		"cee":[]int{10,20},
-		"dee":nil,
+		{1, 2},
+		nil,
+		{10, 20},
+	}
+
+	mn := map[string][]int{
+		"ay":  {1, 2},
+		"bee": nil,
+		"cee": {10, 20},
+		"dee": nil,
 	}
 
 	Register(L, "", Map{
-		"a": a,
-		"m": m,
-		"gc":runtime.GC,
-		"sl":sl,
-		"mn":mn,
+		"a":     a,
+		"new_a": NewA,
+		"b":     b,
+		"m":     m,
+		"gc":    runtime.GC,
+		"sl":    sl,
+		"mn":    mn,
 	})
 
 	err := L.DoString(gtypes1)
@@ -512,5 +536,10 @@ func Test_passingTypes(t *testing.T) {
 	if err == nil {
 		t.Error("must not be able to index map with wrong type!")
 	}
-	
+
+	err = L.DoString(gtypes3)
+	if err == nil {
+		t.Error("must not be able to do binary operation with different types")
+	}
+
 }

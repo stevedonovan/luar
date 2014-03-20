@@ -18,7 +18,7 @@ func RaiseError(L *lua.State, msg string) {
 
 func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
 	if !v.IsValid() {
-		RaiseError(L, "no "+what+" named `"+name+"` for type "+parent.Type().String())
+		RaiseError(L, sprintf("no %s named `%s` for type %s", what, name, parent.Type()))
 	}
 }
 
@@ -36,7 +36,7 @@ const (
 	cCHANNEL_META   = "ChannelMT"
 )
 
-var proxyMap = map[*valueProxy]reflect.Value {}
+var proxyMap = map[*valueProxy]reflect.Value{}
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	rawptr := L.NewUserdata(uintptr(unsafe.Sizeof(valueProxy{})))
@@ -48,9 +48,9 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	L.SetMetaTable(-2)
 }
 
-func proxy__gc (L *lua.State) int {
+func proxy__gc(L *lua.State) int {
 	vp := (*valueProxy)(L.ToUserdata(1))
-	delete(proxyMap,vp)
+	delete(proxyMap, vp)
 	return 0
 }
 
@@ -180,8 +180,8 @@ func MakeChannel(L *lua.State) int {
 func initializeProxies(L *lua.State) {
 	flagValue := func() {
 		L.SetMetaMethod("__tostring", proxy__tostring)
-		L.SetMetaMethod("__gc",proxy__gc)
-		L.SetMetaMethod("__eq",proxy__eq)
+		L.SetMetaMethod("__gc", proxy__gc)
+		L.SetMetaMethod("__eq", proxy__eq)
 		L.PushBoolean(true)
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
@@ -226,9 +226,12 @@ func proxy__tostring(L *lua.State) int {
 }
 
 func proxy__eq(L *lua.State) int {
-	o1, _ := valueOfProxy(L, 1)	
-	o2, _ := valueOfProxy(L, 1)
-	L.PushBoolean(o1 == o2)
+	v1, t1 := valueOfProxy(L, 1)
+	v2, t2 := valueOfProxy(L, 2)
+	if t1 != t2 {
+		RaiseError(L, sprintf("mismatched types %s and %s", t1, t2))
+	}
+	L.PushBoolean(v1.Interface() == v2.Interface())
 	return 1
 }
 
@@ -399,20 +402,20 @@ func struct__newindex(L *lua.State) int {
 type Null int
 
 var (
-	tslice = typeof((*[]interface{})(nil))
-	tmap = typeof((*map[string]interface{})(nil))
-	null = Null(0)
-	nullv = valueOf(null)
-	nullables = map[reflect.Kind]bool {
-		reflect.Chan:true,
-		reflect.Func:true,
-		reflect.Interface:true,
-		reflect.Map:true,
-		reflect.Ptr:true,
-		reflect.Slice:true,
+	tslice    = typeof((*[]interface{})(nil))
+	tmap      = typeof((*map[string]interface{})(nil))
+	null      = Null(0)
+	nullv     = valueOf(null)
+	nullables = map[reflect.Kind]bool{
+		reflect.Chan:      true,
+		reflect.Func:      true,
+		reflect.Interface: true,
+		reflect.Map:       true,
+		reflect.Ptr:       true,
+		reflect.Slice:     true,
 	}
 )
-	
+
 func isNil(val reflect.Value) bool {
 	kind := val.Type().Kind()
 	return nullables[kind] && val.IsNil()
@@ -457,7 +460,7 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 		val := luaToGoValue(L, te, -1)
 		if val == nullv {
 			val = reflect.Zero(te)
-		}		
+		}
 		m.SetMapIndex(key, val)
 		L.Pop(1)
 	}
@@ -525,7 +528,7 @@ func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 			GoToLua(L, nil, key, false)
 			if isNil(v) {
 				v = nullv
-			}			
+			}
 			GoToLua(L, nil, v, true)
 			L.SetTable(-3)
 		}
@@ -672,24 +675,9 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	}
 }
 
-// Convert a Lua value 'idx' on the stack to the Go value of desired type 't'. Handles
-// numerical and string types in a straightforward way, and will convert tables to
-// either map or slice types.
-func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
-	value := luaToGoValue(L, t, idx)
-	if value.IsValid() {
-		return value.Interface()
-	}
-	return nil
-}
-
 // A wrapper of luaToGo that return reflect.Value
 func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
-	val := valueOf(luaToGo(L, t, idx))
-	//~ if t != nil && val.Type() != t {
-	//~ val = val.Convert(t)
-	//~ }
-	return val
+	return valueOf(LuaToGo(L, t, idx))
 }
 
 func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t reflect.Type) {
@@ -702,7 +690,10 @@ func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t refle
 	RaiseError(L, sprintf("arg #%d cannot convert %s to %s", idx, msg, types))
 }
 
-func luaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
+// Convert a Lua value 'idx' on the stack to the Go value of desired type 't'. Handles
+// numerical and string types in a straightforward way, and will convert tables to
+// either map or slice types.
+func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 	var value interface{}
 	var kind reflect.Kind
 
@@ -1285,7 +1276,7 @@ func Init() *lua.State {
 		"sub":         sliceSub,
 		"append":      sliceAppend,
 		"raw":         proxyRaw,
-		"null":     null,
+		"null":        null,
 	})
 	Register(L, "luar", Map{
 		"value": reflect.ValueOf,
