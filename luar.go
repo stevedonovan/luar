@@ -372,7 +372,11 @@ func struct__index(L *lua.State) int {
 	if !ret.IsValid() { // no such field, try for method?
 		callGoMethod(L, name, st)
 	} else {
-		GoToLua(L, ret.Type(), ret, false)
+		if ret.Kind() == reflect.Ptr && ret.Elem().IsValid() && types[int(ret.Elem().Kind())] != nil{
+			GoToLua(L, ret.Elem().Type(), ret.Elem(), false)
+		}else{
+			GoToLua(L, ret.Type(), ret, false)
+		}
 	}
 	return 1
 }
@@ -393,7 +397,11 @@ func struct__newindex(L *lua.State) int {
 	field := st.FieldByName(name)
 	assertValid(L, field, st, name, "field")
 	val := luaToGoValue(L, field.Type(), 3)
-	field.Set(val)
+	if field.Kind() == reflect.Ptr && field.Elem().IsValid() && types[int(field.Elem().Kind())] != nil{
+		field.Elem().Set(val)
+	}else{
+		field.Set(val)
+	}
 	return 0
 }
 
@@ -482,7 +490,7 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	}
 	for L.Next(idx) != 0 {
 		key := L.ToString(-2)
-		f := ref.FieldByName(key)
+		f := ref.FieldByName(strings.Title(key))
 		if f.IsValid() {
 			val := luaToGoValue(L, f.Type(), -1)
 			f.Set(val)
