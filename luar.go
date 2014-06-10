@@ -1053,14 +1053,18 @@ type LuaObject struct {
 func (lo *LuaObject) Get(key string) interface{} {
 	lo.Push() // the table
 	Lookup(lo.L, key, -1)
-	return LuaToGo(lo.L, nil, -1)
+	val := LuaToGo(lo.L, nil, -1)
+    lo.L.Pop(2)
+    return val
 }
 
 // Index the Lua object using a string key, returning Lua object
 func (lo *LuaObject) GetObject(key string) *LuaObject {
 	lo.Push() // the table
 	Lookup(lo.L, key, -1)
-	return NewLuaObject(lo.L, -1)
+	val := NewLuaObject(lo.L, -1)
+    lo.L.Pop(2)
+    return val
 }
 
 // Index the Lua object using integer index
@@ -1083,6 +1087,18 @@ func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
 	L.SetTable(-3)
 	L.Pop(1) // the  table
 	return val
+}
+
+// Copy values between two tables in the same state
+func (lo *LuaObject) Setv(src *LuaObject, keys ...string) {
+    L := lo.L
+    lo.Push()  // destination table at -2
+    src.Push() // source table at -1
+    for _,key := range keys {
+        L.GetField(-1,key) // pushes value
+        L.SetField(-3,key) // pops value
+    }
+    L.Pop(2) // clear the tables
 }
 
 // Convenience function for converting a set of values into a corresponding
@@ -1186,7 +1202,9 @@ func NewLuaObject(L *lua.State, idx int) *LuaObject {
 // A new LuaObject from global qualified name, using Lookup.
 func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 	Lookup(L, path, 0)
-	return NewLuaObject(L, -1)
+	val := NewLuaObject(L, -1)
+    L.Pop(1)
+    return val
 }
 
 // A new LuaObject from a Go value. Note that this _will_ convert any
@@ -1194,6 +1212,14 @@ func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 	GoToLua(L, nil, valueOf(val), true)
 	return NewLuaObject(L, -1)
+}
+
+// new LuaObject refering to the global environment
+func Global(L *lua.State) *LuaObject {
+    L.GetGlobal("_G");
+	val := NewLuaObject(L, -1)
+    L.Pop(1)
+    return val    
 }
 
 // Look up a Lua value by its full name. If idx is 0, then this name
