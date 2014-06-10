@@ -372,7 +372,11 @@ func struct__index(L *lua.State) int {
 	if !ret.IsValid() { // no such field, try for method?
 		callGoMethod(L, name, st)
 	} else {
-		GoToLua(L, ret.Type(), ret, false)
+        if isPointerToPrimitive(ret) {
+            GoToLua(L,ret.Elem().Type(), ret.Elem(), false)
+        } else {
+            GoToLua(L, ret.Type(), ret, false)
+        }
 	}
 	return 1
 }
@@ -393,7 +397,11 @@ func struct__newindex(L *lua.State) int {
 	field := st.FieldByName(name)
 	assertValid(L, field, st, name, "field")
 	val := luaToGoValue(L, field.Type(), 3)
-	field.Set(val)
+    if isPointerToPrimitive(field) {
+        field.Elem().Set(val)
+    } else {
+        field.Set(val)
+    }
 	return 0
 }
 
@@ -582,6 +590,10 @@ func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
 	} else {
 		return nil
 	}
+}
+
+func isPointerToPrimitive(v reflect.Value) bool {
+    return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil;
 }
 
 // Push a Go value 'val' of type 't' on the Lua stack.
