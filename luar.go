@@ -7,6 +7,7 @@ import "strings"
 import "reflect"
 import "unsafe"
 import "fmt"
+import "math"
 
 // raise a Lua error from Go code
 func RaiseError(L *lua.State, msg string) {
@@ -29,6 +30,13 @@ type valueProxy struct {
 }
 
 const (
+	cFLOAT_META   = "floatMT"
+	cINT_META     = "intMT"
+	cUINT_META    = "uintMT"
+	cSTRING_META  = "stringMT"
+	cBOOL_META    = "boolMT"
+	cCOMPLEX_META = "complexMT"
+
 	cSLICE_META     = "sliceMT"
 	cMAP_META       = "mapMT"
 	cSTRUCT_META    = "structMT"
@@ -186,6 +194,51 @@ func initializeProxies(L *lua.State) {
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
 	}
+	L.NewMetaTable(cFLOAT_META)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__lt", float__lt)
+	L.SetMetaMethod("__add", float__add)
+	L.SetMetaMethod("__sub", float__sub)
+	L.SetMetaMethod("__mul", float__mul)
+	L.SetMetaMethod("__div", float__div)
+	// float cannot define __mod
+	L.SetMetaMethod("__pow", float__pow)
+	flagValue()
+	L.NewMetaTable(cINT_META)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__lt", int__lt)
+	L.SetMetaMethod("__add", int__add)
+	L.SetMetaMethod("__sub", int__sub)
+	L.SetMetaMethod("__mul", int__mul)
+	L.SetMetaMethod("__div", int__div)
+	L.SetMetaMethod("__mod", int__mod)
+	L.SetMetaMethod("__pow", int__pow)
+	flagValue()
+	L.NewMetaTable(cUINT_META)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__lt", uint__lt)
+	L.SetMetaMethod("__add", uint__add)
+	L.SetMetaMethod("__sub", uint__sub)
+	L.SetMetaMethod("__mul", uint__mul)
+	L.SetMetaMethod("__div", uint__div)
+	L.SetMetaMethod("__mod", uint__mod)
+	L.SetMetaMethod("__pow", uint__pow)
+	flagValue()
+	L.NewMetaTable(cCOMPLEX_META)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__add", complex__add)
+	L.SetMetaMethod("__sub", complex__sub)
+	L.SetMetaMethod("__mul", complex__mul)
+	L.SetMetaMethod("__div", complex__div)
+	flagValue()
+	L.NewMetaTable(cSTRING_META)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__lt", string__lt)
+	L.SetMetaMethod("__concat", string__concat)
+	flagValue()
+	L.NewMetaTable(cBOOL_META)
+	L.SetMetaMethod("__index", interface__index)
+	flagValue()
 	L.NewMetaTable(cSLICE_META)
 	L.SetMetaMethod("__index", slice__index)
 	L.SetMetaMethod("__newindex", slice__newindex)
@@ -225,13 +278,226 @@ func proxy__tostring(L *lua.State) int {
 	return 1
 }
 
-func proxy__eq(L *lua.State) int {
+func getBinaryValues(L *lua.State) (reflect.Value, reflect.Value, reflect.Type) {
 	v1, t1 := valueOfProxy(L, 1)
 	v2, t2 := valueOfProxy(L, 2)
 	if t1 != t2 {
 		RaiseError(L, sprintf("mismatched types %s and %s", t1, t2))
 	}
+	return v1, v2, t1
+}
+
+func proxy__eq(L *lua.State) int {
+	v1, v2, _ := getBinaryValues(L)
 	L.PushBoolean(v1.Interface() == v2.Interface())
+	return 1
+}
+
+func float__lt(L *lua.State) int {
+	v1, v2, _ := getBinaryValues(L)
+	L.PushBoolean(v1.Float() < v2.Float())
+	return 1
+}
+
+func float__add(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Float() + v2.Float()).Convert(t)
+	makeValueProxy(L, val, cFLOAT_META)
+	return 1
+}
+
+func float__sub(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Float() - v2.Float()).Convert(t)
+	makeValueProxy(L, val, cFLOAT_META)
+	return 1
+}
+
+func float__mul(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Float() * v2.Float()).Convert(t)
+	makeValueProxy(L, val, cFLOAT_META)
+	return 1
+}
+
+func float__div(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Float() / v2.Float()).Convert(t)
+	makeValueProxy(L, val, cFLOAT_META)
+	return 1
+}
+
+// import math for using math.Pow is exaggerate,
+// if this is problem, we should change
+func float__pow(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(math.Pow(v1.Float(), v2.Float())).Convert(t)
+	makeValueProxy(L, val, cFLOAT_META)
+	return 1
+}
+
+func int__lt(L *lua.State) int {
+	v1, v2, _ := getBinaryValues(L)
+	L.PushBoolean(v1.Int() < v2.Int())
+	return 1
+}
+
+func int__add(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Int() + v2.Int()).Convert(t)
+	makeValueProxy(L, val, cINT_META)
+	return 1
+}
+
+func int__sub(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Int() - v2.Int()).Convert(t)
+	makeValueProxy(L, val, cINT_META)
+	return 1
+}
+
+func int__mul(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Int() * v2.Int()).Convert(t)
+	makeValueProxy(L, val, cINT_META)
+	return 1
+}
+
+func int__div(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Int() / v2.Int()).Convert(t)
+	makeValueProxy(L, val, cINT_META)
+	return 1
+}
+
+func int__mod(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Int() % v2.Int()).Convert(t)
+	makeValueProxy(L, val, cINT_META)
+	return 1
+}
+
+func int__pow(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	total := int64(1)
+	i2 := v2.Int()
+	for i := int64(0); i < i2; i++ {
+		total *= v1.Int()
+	}
+	val := valueOf(total).Convert(t)
+	makeValueProxy(L, val, cINT_META)
+	return 1
+}
+
+func uint__lt(L *lua.State) int {
+	v1, v2, _ := getBinaryValues(L)
+	L.PushBoolean(v1.Uint() < v2.Uint())
+	return 1
+}
+
+func uint__add(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Uint() + v2.Uint()).Convert(t)
+	makeValueProxy(L, val, cUINT_META)
+	return 1
+}
+
+func uint__sub(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	i1 := v1.Uint()
+	i2 := v2.Uint()
+	if i1 < i2 {
+		i := float64(i1) - float64(i2)
+		RaiseError(L, sprintf("constant %.0f overflows %s", i, t))
+	}
+	val := valueOf(i1 - i2).Convert(t)
+	makeValueProxy(L, val, cUINT_META)
+	return 1
+}
+
+func uint__mul(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Uint() * v2.Uint()).Convert(t)
+	makeValueProxy(L, val, cUINT_META)
+	return 1
+}
+
+func uint__div(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Uint() / v2.Uint()).Convert(t)
+	makeValueProxy(L, val, cUINT_META)
+	return 1
+}
+
+func uint__mod(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Uint() % v2.Uint()).Convert(t)
+	makeValueProxy(L, val, cUINT_META)
+	return 1
+}
+
+func uint__pow(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	total := uint64(1)
+	i2 := v2.Uint()
+	for i := uint64(0); i < i2; i++ {
+		total *= v1.Uint()
+	}
+	val := valueOf(total).Convert(t)
+	makeValueProxy(L, val, cUINT_META)
+	return 1
+}
+
+func complex__add(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Complex() + v2.Complex())
+	if t != typeOfComplex128 {
+		val = val.Convert(t)
+	}
+	makeValueProxy(L, val, cCOMPLEX_META)
+	return 1
+}
+
+func complex__sub(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Complex() - v2.Complex())
+	if t != typeOfComplex128 {
+		val = val.Convert(t)
+	}
+	makeValueProxy(L, val, cCOMPLEX_META)
+	return 1
+}
+
+func complex__mul(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Complex() * v2.Complex())
+	if t != typeOfComplex128 {
+		val = val.Convert(t)
+	}
+	makeValueProxy(L, val, cCOMPLEX_META)
+	return 1
+}
+
+func complex__div(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.Complex() / v2.Complex())
+	if t != typeOfComplex128 {
+		val = val.Convert(t)
+	}
+	makeValueProxy(L, val, cCOMPLEX_META)
+	return 1
+}
+
+func string__lt(L *lua.State) int {
+	v1, v2, _ := getBinaryValues(L)
+	L.PushBoolean(v1.String() < v2.String())
+	return 1
+}
+
+func string__concat(L *lua.State) int {
+	v1, v2, t := getBinaryValues(L)
+	val := valueOf(v1.String() + v2.String()).Convert(t)
+	makeValueProxy(L, val, cSTRING_META)
 	return 1
 }
 
@@ -583,6 +849,8 @@ var types = []reflect.Type{
 	nil, //UnsafePointer
 }
 
+var typeOfComplex128 = typeof((*complex128)(nil))
+
 func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
 	pt := types[int(kind)]
 	if pt != nil && pt != t {
@@ -617,32 +885,52 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	}
 	kind := t.Kind()
 
-	// underlying type is 'primitive' ? wrap it as a proxy!
-	if isPrimitiveDerived(t, kind) != nil {
-		makeValueProxy(L, val, cINTERFACE_META)
-		return
-	}
+	isPrim := isPrimitiveDerived(t, kind) != nil
 
 	switch kind {
 	case reflect.Float64, reflect.Float32:
 		{
-			L.PushNumber(val.Float())
+			if isPrim {
+				makeValueProxy(L, val, cFLOAT_META)
+			} else {
+				L.PushNumber(val.Float())
+			}
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		{
-			L.PushNumber(float64(val.Int()))
+			if isPrim {
+				makeValueProxy(L, val, cINT_META)
+			} else {
+				L.PushNumber(float64(val.Int()))
+			}
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		{
-			L.PushNumber(float64(val.Uint()))
+			if isPrim {
+				makeValueProxy(L, val, cUINT_META)
+			} else {
+				L.PushNumber(float64(val.Uint()))
+			}
 		}
 	case reflect.String:
 		{
-			L.PushString(val.String())
+			if isPrim {
+				makeValueProxy(L, val, cSTRING_META)
+			} else {
+				L.PushString(val.String())
+			}
 		}
 	case reflect.Bool:
 		{
-			L.PushBoolean(val.Bool())
+			if isPrim {
+				makeValueProxy(L, val, cBOOL_META)
+			} else {
+				L.PushBoolean(val.Bool())
+			}
+		}
+	case reflect.Complex64, reflect.Complex128:
+		{
+			makeValueProxy(L, val, cCOMPLEX_META)
 		}
 	case reflect.Slice:
 		{

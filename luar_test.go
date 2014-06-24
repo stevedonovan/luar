@@ -440,6 +440,12 @@ func (a A) String() string {
 
 type B int
 
+type C uint
+
+func NewC(i uint) C {
+	return C(i)
+}
+
 const gtypes1 = `
 --// can call methods on objects 'derived' from primitive types
 assert(a.String() == '5')
@@ -448,9 +454,11 @@ assert(luar.raw(a) == 5)
 --// various ops also should work same as primitive
 assert(new_a(8) == new_a(8))
 assert(new_a(5) ~= new_a(6))
--- assert(new_a(5) < new_a(8))
--- assert(new_a(8) > new_a(5))
--- assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))
+assert(new_a(5) < new_a(8))
+assert(new_a(8) > new_a(5))
+assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))
+
+assert(complex(5, 8) + complex(7, 9) == complex(12, 17))
 
 assert(m.test == 'art')
 --// should be nil if nonexistent property referenced
@@ -485,6 +493,10 @@ const gtypes3 = `
 assert(b == new_a(9))
 `
 
+const gtypes4 = `
+assert(new_c(4) - new_c(20))
+`
+
 func Test_passingTypes(t *testing.T) {
 	L := Init()
 	defer L.Close()
@@ -509,13 +521,15 @@ func Test_passingTypes(t *testing.T) {
 	}
 
 	Register(L, "", Map{
-		"a":     a,
-		"new_a": NewA,
-		"b":     b,
-		"m":     m,
-		"gc":    runtime.GC,
-		"sl":    sl,
-		"mn":    mn,
+		"a":       a,
+		"new_a":   NewA,
+		"b":       b,
+		"new_c":   NewC,
+		"complex": func(r, i float64) complex128 { return complex(r, i) },
+		"m":       m,
+		"gc":      runtime.GC,
+		"sl":      sl,
+		"mn":      mn,
 	})
 
 	err := L.DoString(gtypes1)
@@ -542,4 +556,8 @@ func Test_passingTypes(t *testing.T) {
 		t.Error("must not be able to do binary operation with different types")
 	}
 
+	err = L.DoString(gtypes4)
+	if err == nil {
+		t.Error("must not be able to do subtract with types that pritimitive is uint and subtrahend is larger than minuend")
+	}
 }
