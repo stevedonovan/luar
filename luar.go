@@ -7,6 +7,7 @@ import "strings"
 import "reflect"
 import "unsafe"
 import "fmt"
+import "sync"
 
 // raise a Lua error from Go code
 func RaiseError(L *lua.State, msg string) {
@@ -36,6 +37,7 @@ const (
 	cCHANNEL_META   = "ChannelMT"
 )
 
+var proxyMapMutex sync.Mutex
 var proxyMap = map[*valueProxy]reflect.Value{}
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
@@ -43,14 +45,18 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
 	ptr.t = val.Type()
+	proxyMapMutex.Lock()
 	proxyMap[ptr] = val
+	proxyMapMutex.Unlock()
 	L.LGetMetaTable(proxyMT)
 	L.SetMetaTable(-2)
 }
 
 func proxy__gc(L *lua.State) int {
 	vp := (*valueProxy)(L.ToUserdata(1))
+	proxyMapMutex.Lock()
 	delete(proxyMap, vp)
+	proxyMapMutex.Unlock()
 	return 0
 }
 
@@ -372,11 +378,11 @@ func struct__index(L *lua.State) int {
 	if !ret.IsValid() { // no such field, try for method?
 		callGoMethod(L, name, st)
 	} else {
-        if isPointerToPrimitive(ret) {
-            GoToLua(L,ret.Elem().Type(), ret.Elem(), false)
-        } else {
-            GoToLua(L, ret.Type(), ret, false)
-        }
+		if isPointerToPrimitive(ret) {
+			GoToLua(L, ret.Elem().Type(), ret.Elem(), false)
+		} else {
+			GoToLua(L, ret.Type(), ret, false)
+		}
 	}
 	return 1
 }
@@ -397,11 +403,11 @@ func struct__newindex(L *lua.State) int {
 	field := st.FieldByName(name)
 	assertValid(L, field, st, name, "field")
 	val := luaToGoValue(L, field.Type(), 3)
-    if isPointerToPrimitive(field) {
-        field.Elem().Set(val)
-    } else {
-        field.Set(val)
-    }
+	if isPointerToPrimitive(field) {
+		field.Elem().Set(val)
+	} else {
+		field.Set(val)
+	}
 	return 0
 }
 
@@ -593,7 +599,7 @@ func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
 }
 
 func isPointerToPrimitive(v reflect.Value) bool {
-    return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil;
+	return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil
 }
 
 // Push a Go value 'val' of type 't' on the Lua stack.
@@ -662,7 +668,9 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		}
 	case reflect.Struct:
 		{
-			if v, ok := val.Interface().(error); ok {
+			if v, ok := val.Interface().(fmt.Stringer); ok {
+				L.PushString(v.String())
+			} else if v, ok := val.Interface().(error); ok {
 				L.PushString(v.Error())
 			} else if v, ok := val.Interface().(*LuaObject); ok {
 				v.Push()
@@ -1066,8 +1074,8 @@ func (lo *LuaObject) Get(key string) interface{} {
 	lo.Push() // the table
 	Lookup(lo.L, key, -1)
 	val := LuaToGo(lo.L, nil, -1)
-    lo.L.Pop(2)
-    return val
+	lo.L.Pop(2)
+	return val
 }
 
 // Index the Lua object using a string key, returning Lua object
@@ -1075,8 +1083,8 @@ func (lo *LuaObject) GetObject(key string) *LuaObject {
 	lo.Push() // the table
 	Lookup(lo.L, key, -1)
 	val := NewLuaObject(lo.L, -1)
-    lo.L.Pop(2)
-    return val
+	lo.L.Pop(2)
+	return val
 }
 
 // Index the Lua object using integer index
@@ -1103,14 +1111,14 @@ func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
 
 // Copy values between two tables in the same state
 func (lo *LuaObject) Setv(src *LuaObject, keys ...string) {
-    L := lo.L
-    lo.Push()  // destination table at -2
-    src.Push() // source table at -1
-    for _,key := range keys {
-        L.GetField(-1,key) // pushes value
-        L.SetField(-3,key) // pops value
-    }
-    L.Pop(2) // clear the tables
+	L := lo.L
+	lo.Push()  // destination table at -2
+	src.Push() // source table at -1
+	for _, key := range keys {
+		L.GetField(-1, key) // pushes value
+		L.SetField(-3, key) // pops value
+	}
+	L.Pop(2) // clear the tables
 }
 
 // Convenience function for converting a set of values into a corresponding
@@ -1215,8 +1223,8 @@ func NewLuaObject(L *lua.State, idx int) *LuaObject {
 func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 	Lookup(L, path, 0)
 	val := NewLuaObject(L, -1)
-    L.Pop(1)
-    return val
+	L.Pop(1)
+	return val
 }
 
 // A new LuaObject from a Go value. Note that this _will_ convert any
@@ -1228,10 +1236,10 @@ func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 
 // new LuaObject refering to the global environment
 func Global(L *lua.State) *LuaObject {
-    L.GetGlobal("_G");
+	L.GetGlobal("_G")
 	val := NewLuaObject(L, -1)
-    L.Pop(1)
-    return val    
+	L.Pop(1)
+	return val
 }
 
 // Look up a Lua value by its full name. If idx is 0, then this name
