@@ -7,6 +7,7 @@ import "strings"
 import "reflect"
 import "unsafe"
 import "fmt"
+import "sync"
 
 // raise a Lua error from Go code
 func RaiseError(L *lua.State, msg string) {
@@ -36,6 +37,7 @@ const (
 	cCHANNEL_META   = "ChannelMT"
 )
 
+var proxyMapMutex sync.Mutex
 var proxyMap = map[*valueProxy]reflect.Value{}
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
@@ -43,14 +45,18 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
 	ptr.t = val.Type()
+	proxyMapMutex.Lock()
 	proxyMap[ptr] = val
+	proxyMapMutex.Unlock()
 	L.LGetMetaTable(proxyMT)
 	L.SetMetaTable(-2)
 }
 
 func proxy__gc(L *lua.State) int {
 	vp := (*valueProxy)(L.ToUserdata(1))
+	proxyMapMutex.Lock()
 	delete(proxyMap, vp)
+	proxyMapMutex.Unlock()
 	return 0
 }
 
