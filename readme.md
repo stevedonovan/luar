@@ -113,7 +113,7 @@ func main() {
 So an arbitrary Go function is callable from Lua, and list-like
 tables become slices on the Go side.  The Go function returns a map,
 which is wrapped as a proxy object. You can however then copy this to
-a Lua table explicitly (there is also luar.slice2table)
+a Lua table explicitly (there is also `luar.slice2table`)
 
 You may pass a Lua table to
 an imported Go function; if the table is 'array-like' then it can be
@@ -121,7 +121,8 @@ converted to a Go slice; if it is 'map-like' then it is converted to a
 Go map.  Usually non-primitive Go values are passed to Lua as wrapped
 userdata which can be naturally indexed if they represent slices,
 maps or structs.  Methods defined on structs can be called, again
-using reflection.
+using reflection. Do note that these methods will be callable using
+_dot-notation_ rather than colon notation!
 
 The consequence is that a person wishing to use Lua from Go does not
 have to use the old-fashioned tedious method needed for C or C++, but
@@ -204,7 +205,7 @@ with.  But the return type can be specified:
     fun := luar.NewLuaObjectFromName(L,"Libs.return_strings")
     returns := luar.Types([]string{})  // --> []reflect.Type
     results,err := fun.Callf(returns)    // -> []interface{}
-    // first returned result should be a slice of strings
+    // first returned result is a slice of strings
     strs := results[0].([]string)
 ```
 
@@ -286,6 +287,10 @@ find out what methods a type has, etc.
 > m.three = 3
 > println(m)
 map[one:1 two:2 three:3]
+> for k,v in pairs(m) do print(k,v) end
+three	3
+one	1
+two	2
 > mt = luar.type(m)
 > = mt.String()
 "map[string]interface {}"
@@ -340,5 +345,7 @@ end
 ```
 
 `sdump` is pretty much the way this would be encoded in Go itself; again, the
-eccentric dot-notation makes it more familiar. 
+eccentric dot-notation makes it more familiar.  This `luar` interpreter is mostly
+Lua embedded in Go source!
+
 

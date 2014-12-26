@@ -99,7 +99,7 @@ func main() {
 
 	register()
 
-	fmt.Println("luar 1.2 Copyright (C) 2013 Steve Donovan")
+	fmt.Println("luar 1.2 Copyright (C) 2013-2014 Steve Donovan")
 	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
 
 	prompt := LUA_PROMPT1
