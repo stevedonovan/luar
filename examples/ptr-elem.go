@@ -6,17 +6,17 @@ import "fmt"
 import "github.com/stevedonovan/luar"
 
 type T struct {
-    A *int32
-    B int64
-    C *string
+	A *int32
+	B int64
+	C *string
 }
 
 func newT() *T {
-    pi := new(int32)
-    *pi = 10
-    ps := new(string)
-    *ps = "hello"
-    return &T{A:pi, B:20,C:ps}
+	pi := new(int32)
+	*pi = 10
+	ps := new(string)
+	*ps = "hello"
+	return &T{A: pi, B: 20, C: ps}
 }
 
 const setup = `

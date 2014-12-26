@@ -5,11 +5,11 @@ import "strconv"
 import "github.com/stevedonovan/luar"
 
 func GoFun(args []int) (res map[string]int) {
-    res = make(map[string]int)
-    for i, val := range args {
-        res[strconv.Itoa(i)] = val * val
-    }
-    return
+	res = make(map[string]int)
+	for i, val := range args {
+		res[strconv.Itoa(i)] = val * val
+	}
+	return
 }
 
 const code = `
