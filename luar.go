@@ -2,7 +2,7 @@
 //
 package luar
 
-import lua "github.com/aarzilli/golua/lua"
+import "github.com/navy1125/golua"
 import "strings"
 import "reflect"
 import "unsafe"
@@ -14,7 +14,7 @@ func RaiseError(L *lua.State, msg string) {
 	L.Where(1)
 	pos := L.ToString(-1)
 	L.Pop(1)
-	panic(L.NewError(pos + " " + msg))
+	L.AppendError(pos + " " + msg)
 }
 
 func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
