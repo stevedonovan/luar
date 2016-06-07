@@ -10,7 +10,7 @@ directly go-gettable if the Lua package is installed.
 
 As a consequence, luar is also go-gettable.
 
-    go get github.com/stevedonovan/luar
+    go get <repo>/luar
 
 However, pkg-config is not universal, and Lua 5.1 may not
 be available as a lua5.1 package. However, cgo does not make any
@@ -41,8 +41,7 @@ The first convenience is that ordinary Go functions may be registered directly:
 ```go
 package main
 
-import "fmt"
-import "github.com/stevedonovan/luar"
+// import ...
 
 const test = `
 for i = 1,10 do
@@ -69,9 +68,7 @@ This example shows how Go slices and maps are marshalled to Lua tables and vice 
 ```go
 package main
 
-import "fmt"
-import "strconv"
-import "github.com/stevedonovan/luar"
+// import ...
 
 func GoFun (args []int) (res map[string]int) {
     res = make(map[string]int)
