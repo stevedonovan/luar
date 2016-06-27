@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/ambrevar/luar"
+	"github.com/stevedonovan/luar"
 )
 
 type Config struct {
