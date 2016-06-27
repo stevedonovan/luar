@@ -1,14 +1,17 @@
 package main
 
-import "fmt"
-import "github.com/stevedonovan/luar"
+import (
+	"fmt"
+
+	"github.com/ambrevar/luar"
+)
 
 type Config struct {
-	Baggins bool
-	Age     int
-	Name    string
-	Ponies  []string
-	Father  *Config
+	Baggins bool     `lua:"baggins"`
+	Age     int      `lua:"age"`
+	Name    string   `lua:"name"`
+	Ponies  []string `lua:"ponies"`
+	Father  *Config  `lua:"father"`
 }
 
 func config(cfg *Config) {
@@ -17,8 +20,7 @@ func config(cfg *Config) {
 }
 
 // an example of using Lua for configuration...
-// Note that Lua names will be automatically
-// title-cased!
+// Note that Lua names will match the "lua" tags.
 const setup = `
 config {
   baggins = true,

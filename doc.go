@@ -4,16 +4,12 @@
    Plain Go functions can be registered with luar and they will be called by reflection;
    methods on Go structs likewise.
 
-    package main
-
-   import "fmt"
-   import "github.com/stevedonovan/luar"
+   // import ...
 
    type MyStruct struct {
      Name string
      Age int
    }
-
 
    const test = `
    for i = 1,5 do

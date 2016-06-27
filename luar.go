@@ -2,12 +2,15 @@
 //
 package luar
 
-import lua "github.com/aarzilli/golua/lua"
-import "strings"
-import "reflect"
-import "unsafe"
-import "fmt"
-import "sync"
+import (
+	"fmt"
+	"reflect"
+	"strings"
+	"sync"
+	"unsafe"
+
+	lua "github.com/aarzilli/golua/lua"
+)
 
 // raise a Lua error from Go code
 func RaiseError(L *lua.State, msg string) {
@@ -490,14 +493,29 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	}
 	s := reflect.New(t) // T -> *T
 	ref := s.Elem()
+
+	// Associate Lua keys with Go fields: tags have priority over matching field
+	// name.
+	fields := map[string]string{}
+	st := ref.Type()
+	for i := 0; i < ref.NumField(); i++ {
+		field := st.Field(i)
+		tag := field.Tag.Get("lua")
+		if tag != "" {
+			fields[tag] = field.Name
+			continue
+		}
+		fields[field.Name] = field.Name
+	}
+
 	L.PushNil()
 	if idx < 0 {
 		idx--
 	}
 	for L.Next(idx) != 0 {
 		key := L.ToString(-2)
-		f := ref.FieldByName(strings.Title(key))
-		if f.IsValid() {
+		f := ref.FieldByName(fields[key])
+		if f.CanSet() && f.IsValid() {
 			val := luaToGoValue(L, f.Type(), -1)
 			f.Set(val)
 		}
@@ -528,6 +546,34 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	} else {
 		L.PushNil()
 		L.PushString("not a slice!")
+	}
+	return 2
+}
+
+// Copy a Go struct to a Lua table. nils in both slices and structs
+// are represented as luar.null. Defines luar.struct2table
+// Use tags to set field names.
+func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
+	if vstruct.IsValid() && vstruct.Type().Kind() == reflect.Struct {
+		n := vstruct.NumField()
+		L.CreateTable(n, 0)
+		for i := 0; i < n; i++ {
+			st := vstruct.Type()
+			field := st.Field(i)
+			key := field.Name
+			tag := field.Tag.Get("lua")
+			if tag != "" {
+				key = tag
+			}
+			GoToLua(L, nil, reflect.ValueOf(key), true)
+			v := vstruct.Field(i)
+			GoToLua(L, nil, v, true)
+			L.SetTable(-3)
+		}
+		return 1
+	} else {
+		L.PushNil()
+		L.PushString("not a struct!")
 	}
 	return 2
 }
@@ -668,16 +714,20 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		}
 	case reflect.Struct:
 		{
-			if v, ok := val.Interface().(error); ok {
-				L.PushString(v.Error())
-			} else if v, ok := val.Interface().(*LuaObject); ok {
-				v.Push()
-			} else {
-				if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && !val.Elem().IsValid() {
-					L.PushNil()
-					return
+			if !dontproxify {
+				if v, ok := val.Interface().(error); ok {
+					L.PushString(v.Error())
+				} else if v, ok := val.Interface().(*LuaObject); ok {
+					v.Push()
+				} else {
+					if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && !val.Elem().IsValid() {
+						L.PushNil()
+						return
+					}
+					makeValueProxy(L, val, cSTRUCT_META)
 				}
-				makeValueProxy(L, val, cSTRUCT_META)
+			} else {
+				CopyStructToTable(L, val)
 			}
 		}
 	default:
@@ -1266,6 +1316,10 @@ func map2table(L *lua.State) int {
 
 func slice2table(L *lua.State) int {
 	return CopySliceToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
+}
+
+func struct2table(L *lua.State) int {
+	return CopyStructToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
 }
 
 func makeMap(L *lua.State) int {
