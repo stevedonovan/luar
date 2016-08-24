@@ -748,16 +748,6 @@ func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
 	return valueOf(LuaToGo(L, t, idx))
 }
 
-func cannotConvert(L *lua.State, idx int, msg string, kind reflect.Kind, t reflect.Type) {
-	types := ""
-	if t != nil {
-		types = t.String()
-	} else {
-		types = kind.String()
-	}
-	RaiseError(L, sprintf("arg #%d cannot convert %s to %s", idx, msg, types))
-}
-
 // Convert a Lua value 'idx' on the stack to the Go value of desired type 't'. Handles
 // numerical and string types in a straightforward way, and will convert tables to
 // either map or slice types.
@@ -782,7 +772,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		switch kind {
 		default:
-			cannotConvert(L, idx, "nil", kind, t)
+			value = reflect.Zero(t).Interface()
 		}
 	case lua.LUA_TBOOLEAN:
 		if t == nil {
@@ -796,7 +786,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				value = *ptr
 			}
 		default:
-			cannotConvert(L, idx, "bool", kind, t)
+			value = reflect.Zero(t).Interface()
 		}
 	case lua.LUA_TSTRING:
 		if t == nil {
@@ -811,7 +801,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				value = *ptr
 			}
 		default:
-			cannotConvert(L, idx, "string", kind, t)
+			value = reflect.Zero(t).Interface()
 		}
 	case lua.LUA_TNUMBER:
 		if t == nil {
@@ -891,7 +881,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 				value = *ptr
 			}
 		default:
-			cannotConvert(L, idx, "number", kind, t)
+			value = reflect.Zero(t).Interface()
 		}
 	case lua.LUA_TTABLE:
 		if t == nil {
@@ -960,7 +950,6 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 			}
 		default:
 			value = unwrapProxyOrComplain(L, idx)
-			//cannotConvert(L,idx,"unknown",kind,t)
 		}
 	}
 
