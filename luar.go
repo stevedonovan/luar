@@ -450,7 +450,7 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
 		val := luaToGoValue(L, te, -1)
-		if val == nullv {
+		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
 		slice.Index(i - 1).Set(val)
@@ -475,7 +475,7 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 		// key at -2, value at -1
 		key := luaToGoValue(L, tk, -2)
 		val := luaToGoValue(L, te, -1)
-		if val == nullv {
+		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
 		m.SetMapIndex(key, val)
