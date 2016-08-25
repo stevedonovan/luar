@@ -1,352 +1,245 @@
 package luar
 
-import "testing"
-import "strconv"
-import "os"
-import "reflect"
-import "runtime"
+import (
+	"os"
+	"reflect"
+	"runtime"
+	"strconv"
+	"testing"
+)
 
-// I _still_ like asserts ;)
-func assertEq(t *testing.T, msg string, v1, v2 interface{}) {
-	if v1 != v2 {
-		t.Error("were not equal: " + msg)
+// Calling Go functions from Lua.
+// Returning multiple values is straightforward.
+// All Go number types map to Lua numbers, which are (usually) doubles.
+//
+// Arbitrary Go functions can be registered to be callable from Lua. Here the
+// functions are put into the global table.
+func TestGoFunCall(t *testing.T) {
+	id := func(x float32, a string) (float32, string) {
+		return x, a
+	}
+
+	sum := func(args []float64) float64 {
+		res := 0.0
+		for _, val := range args {
+			res += val
+		}
+		return res
+	}
+
+	sumv := func(args ...float64) float64 {
+		return sum(args)
+	}
+
+	// [10,20] -> {'0':100, '1':400}
+	squares := func(args []int) (res map[string]int) {
+		res = make(map[string]int)
+		for i, val := range args {
+			res[strconv.Itoa(i)] = val * val
+		}
+		return
+	}
+
+	IsNilInterface := func(v interface{}) bool {
+		return v == nil
+	}
+
+	IsNilPointer := func(v *person) bool {
+		return v == nil
+	}
+
+	tdt := []struct{ desc, code string }{
+		{"go function call", `x, a = id(42, 'foo')
+assert(x == 42 and a == 'foo')`},
+		{"auto-convert table to slice", `res = sum{1, 10, 100}
+assert(res == 111)`},
+		{"variadic call", `res = sumv(1, 10, 100)
+assert(res == 111)`},
+
+		// A map is returned as a map-proxy, which we may explicitly convert to a
+		// table.
+		{"init proxy", `proxy = squares{10, 20}
+assert(proxy['0'] == 100)
+assert(proxy['1'] == 400)`},
+		{"copy proxy to table", `proxy = squares{10, 20}
+t = luar.map2table(proxy)
+assert(type(t)=='table')
+assert(t['0'] == 100)
+assert(t['1'] == 400)`},
+		{"change proxy, not table", `proxy = squares{10, 20}
+t = luar.map2table(proxy)
+proxy['0'] = 0
+assert(t['0'] == 100)`},
+
+		{"pass nil to Go functions", `assert(IsNilInterface(nil))
+assert(IsNilPointer(nil))`},
+	}
+
+	for _, v := range tdt {
+		L := Init()
+		defer L.Close()
+		Register(L, "", Map{
+			"id":             id,
+			"sum":            sum,
+			"sumv":           sumv,
+			"squares":        squares,
+			"IsNilInterface": IsNilInterface,
+			"IsNilPointer":   IsNilPointer,
+		})
+		err := L.DoString(v.code)
+		if err != nil {
+			t.Error(v.desc+":", err)
+		}
 	}
 }
 
-func fun2(x float32, a string) (float32, string) {
-	return x, a
-}
-
-func sum(args []float64) float64 {
-	res := 0.0
-	for _, val := range args {
-		res += val
+func TestNamespace(t *testing.T) {
+	keys := func(m map[string]interface{}) (res []string) {
+		res = make([]string, 0)
+		for k := range m {
+			res = append(res, k)
+		}
+		return
 	}
-	return res
-}
 
-func sumv(args ...float64) float64 {
-	return sum(args)
-}
-
-// [10,20] -> {'0':10,'1':20}
-func squares(args []int) (res map[string]int) {
-	res = make(map[string]int)
-	for i, val := range args {
-		res[strconv.Itoa(i)] = val * val
+	values := func(m map[string]interface{}) (res []interface{}) {
+		res = make([]interface{}, 0)
+		for _, v := range m {
+			res = append(res, v)
+		}
+		return
 	}
-	return
-}
 
-func keys(m map[string]interface{}) (res []string) {
-	res = make([]string, 0)
-	for k := range m {
-		res = append(res, k)
-	}
-	return
-}
+	const code = `
+-- Passing a 'hash-like' Lua table converts to a Go map.
+local T = {one=1, two=2}
+local k = gons.keys(T)
 
-func values(m map[string]interface{}) (res []interface{}) {
-	res = make([]interface{}, 0)
-	for _, v := range m {
-		res = append(res, v)
-	}
-	return
-}
-
-func Nil(v interface{}) string {
-	if v == nil {
-		return "bad"
-	} else {
-		return "good"
-	}
-}
-
-func NilTest(v *Test) string {
-	if v == nil {
-		return "bad"
-	} else {
-		return "good"
-	}
-}
-
-const calling = `
---// Calling Go functions from Lua //////
---//  returning multiple values is straightforward
---// all Go number types map to Lua numbers, which are (usually) doubles
-local x,a = fun2(42,'hello')
-assert(x == 42 and a == 'hello')
---// Lua tables auto-convert to slices when passed
-local res = sum{1,10,100}
-assert(res == 111)
---// variadic form
-res = sumv(1,10,100)
-assert(res == 111)
-res = squares {10,20,30,40}
---// a map is returned as a map-proxy,
-assert(res['0'] == 100)
-assert(res['1'] == 400)
---// which we may explicitly convert to a table
-res = luar.map2table(res)
-assert(type(res)=='table')
-assert(res['0'] == 100)
-assert(res['1'] == 400)
---// passing a 'hash-like' Lua table converts to  a Go map
-local T = {one=1,two=2}
-local k = gu.keys(T)
---// can't depend on deterministic ordering in returned slice proxy
+-- Can't depend on deterministic ordering in returned slice proxy.
 assert( (k[1]=='one' and k[2]=='two') or (k[2]=='one' and k[1]=='two') )
-local v = gu.values(T)
+
+local v = gons.values(T)
 assert(v[1]==1 or v[2]==1)
-do return end
 v = luar.slice2table(v)
-assert( (v[1]==1 and v[2]==2) or (v[2]==1 and v[1]==2) )
+assert( (v[1]==1 and v[2]==2) or (v[2]==1 and v[1]==2) )`
 
---// passing nils to Go functions
-assert(Nil(nil) == 'bad')
-assert(NilTest(nil) == 'bad')
-`
-
-func Test_callingGoFun(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
-	// arbitrary Go functions can be registered
-	// to be callable from Lua; here the  functions are put into the global table
-	Register(L, "", Map{
-		"fun2":    fun2,
-		"sum":     sum,
-		"sumv":    sumv,
-		"squares": squares,
-		"Nil":     Nil,
-		"NilTest": Nil,
-	})
-
-	// can register them as a Lua table for namespacing...
-	Register(L, "gu", Map{
+	Register(L, "gons", Map{
 		"keys":   keys,
 		"values": values,
 	})
 
-	code := calling
 	err := L.DoString(code)
 	if err != nil {
 		t.Error(err)
 	}
 }
 
-// dispatching methods on a struct
-
-type Test struct {
+type person struct {
 	Name string
 	Age  int
 }
 
-type HasName interface {
+type hasName interface {
 	GetName() string
 }
 
-func (self *Test) GetName() string {
-	return self.Name
+func (p *person) GetName() string {
+	return p.Name
 }
 
-func NewTest(name string, age int) *Test {
-	return &Test{name, age}
+func newPerson(name string, age int) *person {
+	return &person{name, age}
 }
 
-func NewName(t *Test) HasName {
+func newName(t *person) hasName {
 	return t
 }
 
-func GetName(o HasName) string {
+func getName(o hasName) string {
 	return o.GetName()
 }
 
-func NewTestV(name string, age int) Test {
-	return Test{name, age}
-}
-
-func UnpacksTest(t Test) (string, int) {
-	return t.Name, t.Age
-}
-
-type Empty struct {
-}
-
-func NewEmpty(i int) *Empty {
-	if i == 0 {
-		return nil
-	}
-	return &Empty{}
-}
-
-const accessing_structs = `
-local t = NewTest("Alice",16)
---//t is a struct proxy...
---//can always directly get & set public fields
+func TestStructAccess(t *testing.T) {
+	const code = `
+-- 't' is a struct proxy.
+-- We can always directly get and set public fields.
+local t = NewPerson("Alice", 16)
 assert(t.Name == 'Alice')
 assert(t.Age == 16)
 t.Name = 'Caterpillar'
---// note a weirdness - you don't use colon notation here
-assert(t.GetName() == 'Caterpillar')
---// can call methods on struct values as well
-t = NewTestV("Alfred",24)
-assert(t.GetName() == 'Alfred')
-assert(t.Age == 24)
-local name,age = UnpacksTest {Name = 'Bob', Age = 22}
-assert (name == 'Bob' and age == 22)
-print 'finis'
 
---// function returning ptr or interface, handling return nil
---// pull #7 hirochachacha
-assert(NewEmpty(0) == nil)
---// interfaces
- t = NewTest("Alice",16)
+-- Note a pitfall: we don't use colon notation here.
+assert(t.GetName() == 'Caterpillar')
+
+-- Interfaces.
+t = NewPerson("Alice", 16)
 it = NewName(t)
 assert(it.GetName()=='Alice')
 assert(GetName(it)=='Alice')
 assert(GetName(t)=='Alice')
-assert(luar.type(t).String() == "*luar.Test")
-assert(luar.type(it).String() == "*luar.Test")
-print 'finished'
-
+assert(luar.type(t).String() == "*luar.person")
+assert(luar.type(it).String() == "*luar.person")
 `
 
-// there are some basic constructs which need help from the Go side...
-// Fortunately it's very easy to import them!
-
-func byteBuffer(sz int) []byte {
-	return make([]byte, sz)
-}
-
-func bytesToString(bb []byte) string {
-	return string(bb)
-}
-
-const calling_interface = `
---// calling methods on an interface
-local f,err = OsOpen("luar_test.go")
-local buff = byteBuffer(100)
-assert(#buff == 100)
-local k,err = f.Read(buff)
-assert(k == 100)
-local s = bytesToString(buff)
-assert(s:match '^package luar')
-f.Close()
-
-`
-
-func Test_callingStructs(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
 	Register(L, "", Map{
-		"NewTest":       NewTest,
-		"NewTestV":      NewTestV,
-		"UnpacksTest":   UnpacksTest,
-		"OsOpen":        os.Open,
-		"byteBuffer":    byteBuffer,
-		"bytesToString": bytesToString,
-		"NewEmpty":      NewEmpty,
-		"NewName":       NewName,
-		"GetName":       GetName,
+		"NewPerson": newPerson,
+		"NewName":   newName,
+		"GetName":   getName,
 	})
 
-	code := accessing_structs + calling_interface
 	err := L.DoString(code)
 	if err != nil {
 		t.Error(err)
 	}
 }
 
-// using Lua to parse configuration files
-const config = `
-return {
-  baggins = true,
-  age = 24,
-  name = 'dumbo' ,
-  marked = {1,2},
-  options = {
-      leave = true,
-      cancel = 'always',
-	  tags = {strong=true,foolish=true},
-  }
-}
-`
+func TestInterfaceAccess(t *testing.T) {
+	const code = `
+-- Calling methods on an interface.
+local f, err = OsOpen("luar_test.go")
+local buff = byteBuffer(100)
+assert(#buff == 100)
+local k, err = f.Read(buff)
+assert(k == 100)
+local s = bytesToString(buff)
+assert(s:match '^package luar')
+f.Close()`
 
-func Test_parsingConfig(t *testing.T) {
+	// There are some basic constructs which need help from the Go side...
+	// Fortunately it's very easy to import them!
+	byteBuffer := func(sz int) []byte {
+		return make([]byte, sz)
+	}
+	bytesToString := func(bb []byte) string {
+		return string(bb)
+	}
+
 	L := Init()
 	defer L.Close()
 
-	err := L.DoString(config)
+	Register(L, "", Map{
+		"OsOpen":        os.Open,
+		"byteBuffer":    byteBuffer,
+		"bytesToString": bytesToString,
+	})
+
+	err := L.DoString(code)
 	if err != nil {
 		t.Error(err)
 	}
-	// there will be a table on the Lua stack
-	if !L.IsTable(-1) {
-		t.Error("did not return a table")
-	}
-	v := CopyTableToMap(L, nil, -1)
-	// extract table from the returned interface...
-	m := v.(map[string]interface{})
-	assertEq(t, "baggins", m["baggins"], true)
-	assertEq(t, "name", m["name"], "dumbo")
-	marked := m["marked"].([]interface{})
-	assertEq(t, "slice len", len(marked), 2)
-	// a little gotcha here - Lua numbers are doubles..
-	assertEq(t, "val", marked[0], 1.0)
-	assertEq(t, "val", marked[1], 2.0)
-	options := m["options"].(map[string]interface{})
-	assertEq(t, "leave", options["leave"], true)
-
-	// another way to do this. using LuaObject to manipulate the table
-	L.DoString(config)
-	lo := NewLuaObject(L, -1)
-	assertEq(t, "lbag", lo.Get("baggins"), true)
-	assertEq(t, "lname", lo.Get("name"), "dumbo")
-	// can get the field itself as a Lua object, and so forth
-	opts := lo.GetObject("options")
-	assertEq(t, "opts", opts.Get("leave"), true)
-	// note that these Get methods understand nested fields ('chains')
-	assertEq(t, "chain", lo.Get("options.leave"), true)
-	assertEq(t, "chain", lo.Get("options.tags.strong"), true)
-	// nested fields don't crash but return nil
-	assertEq(t, "chain", lo.Get("options.tags.extra.flakey"), nil)
-	markd := lo.GetObject("marked")
-	assertEq(t, "marked1", markd.Geti(1), 1.0)
-	iter := lo.Iter()
-	keys := []string{}
-	for iter.Next() {
-		keys = append(keys, iter.Key.(string))
-	}
-	if !compareNoOrder(keys, []string{"baggins", "options", "marked", "age", "name"}) {
-		t.Error("keys were not the same!")
-	}
-
 }
 
-func findInSlice(ss []string, s string) int {
-	for i, v := range ss {
-		if v == s {
-			return i
-		}
-	}
-	return -1
-}
+func TestLuaCallSlice(t *testing.T) {
+	L := Init()
+	defer L.Close()
 
-func compareNoOrder(s1, s2 []string) bool {
-	if len(s1) != len(s2) {
-		return false
-	}
-	for _, s := range s1 {
-		if findInSlice(s2, s) == -1 {
-			return false
-		}
-	}
-	return true
-}
-
-const luaf = `
+	const code = `
 Libs = {}
 function Libs.fun(s,i,t,m)
 	assert(s == 'hello')
@@ -355,77 +248,64 @@ function Libs.fun(s,i,t,m)
 	assert(type(t) == 'userdata' and t[1] == 42)
 	assert(type(m) == 'userdata' and m.name == 'Joe')
 	return 'ok'
-end
-function Libs.return_strings()
-    return {'one','two','three'}
-end
-function Libs.return_strings_null()
-    return {'one',luar.null,'three'}
-end
-function Libs.return_slices_null()
-    return {{'one'},luar.null,{'three'}}
-end
+end`
 
-`
-
-func Test_callingLua(t *testing.T) {
-	L := Init()
-	defer L.Close()
-
-	// the very versatile string.gsub function
-	lobj := NewLuaObjectFromName
-	gsub := lobj(L, "string.gsub")
-	// this is a Lua table... copies Go object, doesn't create proxy
-	replacements := NewLuaObjectFromValue(L, Map{
-		"NAME": "Dolly",
-		"HOME": "where you belong",
-	})
-	// we do this because string.gsub wants either a string,function or table for its second arg
-	res, err := gsub.Call("hello $NAME go $HOME", "%$(%u+)", replacements)
-	if res == nil {
-		t.Error(err)
-	}
-	assertEq(t, "hello", res, "hello Dolly go where you belong")
-
-	err = L.DoString(luaf)
+	err := L.DoString(code)
 	if err != nil {
 		t.Error(err)
 	}
 
-	fun := lobj(L, "Libs.fun")
-	res, err = fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
+	fun := NewLuaObjectFromName(L, "Libs.fun")
+	got, _ := fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
 		"name": "Joe",
 	})
-	assertEq(t, "fun", res, "ok")
+	if got != "ok" {
+		t.Error("did not get correct slice of slices!")
+	}
+}
 
-	// can force the type and number of returned values using Callf
-	fun = lobj(L, "Libs.return_strings")
-	returns := Types([]string{}) // []reflect.Type
-	results, err := fun.Callf(returns)
-	// first returned result should be a slice of strings
-	strs := results[0].([]string)
-	if !(strs[0] == "one" && strs[1] == "two" && strs[2] == "three") {
-		t.Error("did not get correct slice of strings!")
+func TestLuaCallfSlice(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	const code = `
+function return_slices()
+    return {{'one'}, luar.null, {'three'}}
+end`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
 	}
 
-	// we get an empty string corresponding to a luar.null in a table,
-	// since that's the empty 'zero' value for a string.
-	fun = lobj(L, "Libs.return_strings_null")
-	results, err = fun.Callf(returns)
-	strs = results[0].([]string)
-	if !(strs[0] == "one" && strs[1] == "" && strs[2] == "three") {
-		t.Error("did not get correct slice of null strings!")
-	}
-
-	fun = lobj(L, "Libs.return_slices_null")
-	results, err = fun.Callf(Types([][]string{}))
+	fun := NewLuaObjectFromName(L, "return_slices")
+	results, _ := fun.Callf(Types([][]string{}))
 	sstrs := results[0].([][]string)
 	if !(sstrs[0][0] == "one" && sstrs[1] == nil && sstrs[2][0] == "three") {
 		t.Error("did not get correct slice of slices!")
 	}
+}
 
-	println("that's all folks!")
+// See if Go values are properly anchored.
+func TestAnchoring(t *testing.T) {
+	L := Init()
+	defer L.Close()
 
+	const code = `local s = luar.slice(2)
+s[1] = 10
+s[2] = 20
+gc()
+assert(#s == 2 and s[1]==10 and s[2]==20)
+s = nil`
+
+	Register(L, "", Map{
+		"gc": runtime.GC,
+	})
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 type A int
@@ -440,87 +320,35 @@ func (a A) String() string {
 
 type B int
 
-const gtypes1 = `
---// can call methods on objects 'derived' from primitive types
-assert(a.String() == '5')
---// get underlying primitive value with luar.raw
-assert(luar.raw(a) == 5)
---// various ops also should work same as primitive
-assert(new_a(8) == new_a(8))
+func TestTypeDiscipline(t *testing.T) {
+	tdt := []struct{ desc, code string }{
+		{"call methods on objects 'derived' from primitive types", `assert(a.String() == '5')`},
+		{"get underlying primitive value", `assert(luar.raw(a) == 5)`},
+		{"arith ops on derived types", `assert(new_a(8) == new_a(8))
 assert(new_a(5) ~= new_a(6))
+-- TODO: Arith ops on userdata does not work, why?
 -- assert(new_a(5) < new_a(8))
 -- assert(new_a(8) > new_a(5))
--- assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))
+-- assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))`},
+	}
 
-assert(m.test == 'art')
---// should be nil if nonexistent property referenced
-assert(m.Test == nil)
-
---// test to see if Go values are properly anchored
-local s = luar.slice(2)
-s[1] = 10
-s[2] = 20
-gc()
-assert(#s == 2 and s[1]==10 and s[2]==20)
-s = nil
-collectgarbage()
-collectgarbage()
-
---// nils in Go slices & maps represented by luar.null
-tab = luar.slice2table(sl)
-assert(#tab == 4)
-assert(tab[1] == luar.null)
-assert(tab[3] == luar.null)
-tab2 = luar.map2table(mn)
-assert(tab2.bee == luar.null and tab2.dee == luar.null)
-`
-
-// accessing map with wrong key type must fail
-const gtypes2 = `
-print(m[5])
-`
-
-// binary op with different type must fail
-const gtypes3 = `
-assert(b == new_a(9))
-`
-
-func Test_passingTypes(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
 	a := A(5)
 	b := B(9)
-	m := map[string]string{"test": "art"}
-
-	// a slice with nils!
-	sl := [][]int{
-		nil,
-		{1, 2},
-		nil,
-		{10, 20},
-	}
-
-	mn := map[string][]int{
-		"ay":  {1, 2},
-		"bee": nil,
-		"cee": {10, 20},
-		"dee": nil,
-	}
 
 	Register(L, "", Map{
 		"a":     a,
-		"new_a": NewA,
 		"b":     b,
-		"m":     m,
-		"gc":    runtime.GC,
-		"sl":    sl,
-		"mn":    mn,
+		"new_a": NewA,
 	})
 
-	err := L.DoString(gtypes1)
-	if err != nil {
-		t.Error(err)
+	for _, v := range tdt {
+		err := L.DoString(v.code)
+		if err != nil {
+			t.Error(v.desc, err)
+		}
 	}
 
 	L.GetGlobal("a")
@@ -532,14 +360,73 @@ func Test_passingTypes(t *testing.T) {
 		t.Error("types were not converted properly")
 	}
 
-	err = L.DoString(gtypes2)
+	// Binary op with different type must fail.
+	const fail = `assert(b != new_a(9))`
+	err := L.DoString(fail)
 	if err == nil {
-		t.Error("must not be able to index map with wrong type!")
+		t.Error(err)
+	}
+}
+
+// Map non-existent entry should be nil.
+func TestTypeMap(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	m := map[string]string{"test": "art"}
+
+	Register(L, "", Map{
+		"m": m,
+	})
+
+	const code = `assert(m.test == 'art')
+assert(m.Test == nil)`
+
+	// Accessing map with wrong key type must fail.
+	const code2 = `_=m[5]`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+// 'nil' in Go slices and maps is represented by luar.null.
+func TestTypeConversion(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	const code = `
+tab = luar.slice2table(sl)
+assert(#tab == 4)
+assert(tab[1] == luar.null)
+assert(tab[3] == luar.null)
+
+tab2 = luar.map2table(mn)
+assert(tab2.bee == luar.null and tab2.dee == luar.null)
+`
+
+	sl := [][]int{
+		nil,
+		{1, 2},
+		nil,
+		{10, 20},
 	}
 
-	err = L.DoString(gtypes3)
-	if err == nil {
-		t.Error("must not be able to do binary operation with different types")
+	mn := map[string][]int{
+		"aay": {1, 2},
+		"bee": nil,
+		"cee": {10, 20},
+		"dee": nil,
 	}
 
+	Register(L, "", Map{
+		"sl": sl,
+		"mn": mn,
+	})
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
 }

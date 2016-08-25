@@ -1,5 +1,5 @@
-// Copyright Steve Donovan 2013
-//
+// Copyright (c) 2010-2016 Steve Donovan
+
 package luar
 
 import (
@@ -9,10 +9,10 @@ import (
 	"sync"
 	"unsafe"
 
-	lua "github.com/aarzilli/golua/lua"
+	"github.com/aarzilli/golua/lua"
 )
 
-// raise a Lua error from Go code
+// RaiseError raises a Lua error from Go code.
 func RaiseError(L *lua.State, msg string) {
 	L.Where(1)
 	pos := L.ToString(-1)
@@ -22,9 +22,11 @@ func RaiseError(L *lua.State, msg string) {
 
 func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
 	if !v.IsValid() {
-		RaiseError(L, sprintf("no %s named `%s` for type %s", what, name, parent.Type()))
+		RaiseError(L, fmt.Sprintf("no %s named `%s` for type %s", what, name, parent.Type()))
 	}
 }
+
+// TODO: Separate proxy code.
 
 // Lua proxy objects for Slices, Maps and Structs
 type valueProxy struct {
@@ -33,18 +35,18 @@ type valueProxy struct {
 }
 
 const (
-	cSLICE_META     = "sliceMT"
-	cMAP_META       = "mapMT"
-	cSTRUCT_META    = "structMT"
-	cINTERFACE_META = "interfaceMT"
-	cCHANNEL_META   = "ChannelMT"
+	cSliceMeta     = "sliceMT"
+	cMapMeta       = "mapMT"
+	cStructMeta    = "structMT"
+	cInterfaceMeta = "interfaceMT"
+	cChannelMeta   = "ChannelMT"
 )
 
 var proxyMap = map[*valueProxy]reflect.Value{}
 var mu = &sync.Mutex{}
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
-	rawptr := L.NewUserdata(uintptr(unsafe.Sizeof(valueProxy{})))
+	rawptr := L.NewUserdata(unsafe.Sizeof(valueProxy{}))
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
 	ptr.t = val.Type()
@@ -62,8 +64,6 @@ func proxy__gc(L *lua.State) int {
 	mu.Unlock()
 	return 0
 }
-
-var valueOf = reflect.ValueOf
 
 func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
 	vp := (*valueProxy)(L.ToUserdata(idx))
@@ -92,22 +92,19 @@ func unwrapProxy(L *lua.State, idx int) interface{} {
 	return nil
 }
 
-var sprintf = fmt.Sprintf
-
 func unwrapProxyOrComplain(L *lua.State, idx int) interface{} {
 	if isValueProxy(L, idx) {
 		v, _ := valueOfProxy(L, idx)
 		return v.Interface()
-	} else {
-		RaiseError(L, sprintf("arg #%d is not a Go object!", idx))
-		return nil
 	}
+	RaiseError(L, fmt.Sprintf("arg #%d is not a Go object!", idx))
+	return nil
 }
 
 func proxyType(L *lua.State) int {
 	v := unwrapProxy(L, 1)
 	if v != nil {
-		GoToLua(L, nil, valueOf(reflect.TypeOf(v)), false)
+		GoToLua(L, nil, reflect.ValueOf(reflect.TypeOf(v)), false)
 	} else {
 		L.PushNil()
 	}
@@ -119,7 +116,7 @@ func proxyRaw(L *lua.State) int {
 	t := reflect.TypeOf(v)
 	tp := isPrimitiveDerived(t, t.Kind())
 	if tp != nil {
-		val := valueOf(v)
+		val := reflect.ValueOf(v)
 		val = val.Convert(tp)
 		GoToLua(L, nil, val, false)
 	} else {
@@ -134,7 +131,7 @@ func channel_send(L *lua.State) int {
 	L.PushBoolean(true)
 	return L.Yield(3)
 	//~ ch,t := valueOfProxy(L,1)
-	//~ val := valueOf(LuaToGo(L, t.Elem(),2))
+	//~ val := reflect.ValueOf(LuaToGo(L, t.Elem(),2))
 	//~ ch.Send(val)
 	//~ return 0
 }
@@ -152,6 +149,7 @@ func channel_recv(L *lua.State) int {
 	//~ return 2
 }
 
+// TODO: What is this for?
 func GoLua(L *lua.State) int {
 	go func() {
 		LT := L.NewThread()
@@ -166,7 +164,7 @@ func GoLua(L *lua.State) int {
 			ch, t := valueOfProxy(LT, -2)
 
 			if LT.ToBoolean(-1) { // send on a channel
-				val := luaToGoValue(LT, t.Elem(), -3)
+				val := reflect.ValueOf(LuaToGo(LT, t.Elem(), -3))
 				ch.Send(val)
 				res = LT.Resume(0)
 			} else { // receive on a channel
@@ -180,9 +178,10 @@ func GoLua(L *lua.State) int {
 	return 0
 }
 
+// TODO: Is this useful at all?
 func MakeChannel(L *lua.State) int {
 	ch := make(chan interface{})
-	makeValueProxy(L, valueOf(ch), cCHANNEL_META)
+	makeValueProxy(L, reflect.ValueOf(ch), cChannelMeta)
 	return 1
 }
 
@@ -195,26 +194,26 @@ func initializeProxies(L *lua.State) {
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
 	}
-	L.NewMetaTable(cSLICE_META)
+	L.NewMetaTable(cSliceMeta)
 	L.SetMetaMethod("__index", slice__index)
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__ipairs", slice__ipairs)
 	flagValue()
-	L.NewMetaTable(cMAP_META)
+	L.NewMetaTable(cMapMeta)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__pairs", map__pairs)
 	flagValue()
-	L.NewMetaTable(cSTRUCT_META)
+	L.NewMetaTable(cStructMeta)
 	L.SetMetaMethod("__index", struct__index)
 	L.SetMetaMethod("__newindex", struct__newindex)
 	flagValue()
-	L.NewMetaTable(cINTERFACE_META)
+	L.NewMetaTable(cInterfaceMeta)
 	L.SetMetaMethod("__index", interface__index)
 	flagValue()
-	L.NewMetaTable(cCHANNEL_META)
+	L.NewMetaTable(cChannelMeta)
 	//~ RegisterFunctions(L,"*",FMap {
 	//~ "Send":channel_send,
 	//~ "Recv":channel_recv,
@@ -238,7 +237,7 @@ func proxy__eq(L *lua.State) int {
 	v1, t1 := valueOfProxy(L, 1)
 	v2, t2 := valueOfProxy(L, 2)
 	if t1 != t2 {
-		RaiseError(L, sprintf("mismatched types %s and %s", t1, t2))
+		RaiseError(L, fmt.Sprintf("mismatched types %s and %s", t1, t2))
 	}
 	L.PushBoolean(v1.Interface() == v2.Interface())
 	return 1
@@ -248,15 +247,15 @@ func sliceSub(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	i1, i2 := L.ToInteger(2), L.ToInteger(3)
 	newslice := slice.Slice(i1-1, i2)
-	makeValueProxy(L, newslice, cSLICE_META)
+	makeValueProxy(L, newslice, cSliceMeta)
 	return 1
 }
 
 func sliceAppend(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
-	val := luaToGoValue(L, nil, 2)
+	val := reflect.ValueOf(LuaToGo(L, nil, 2))
 	newslice := reflect.Append(slice, val)
-	makeValueProxy(L, newslice, cSLICE_META)
+	makeValueProxy(L, newslice, cSliceMeta)
 	return 1
 }
 
@@ -278,7 +277,7 @@ func slice__index(L *lua.State) int {
 func slice__newindex(L *lua.State) int {
 	slice, t := valueOfProxy(L, 1)
 	idx := L.ToInteger(2)
-	val := luaToGoValue(L, t.Elem(), 3)
+	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
 	if idx < 1 || idx > slice.Len() {
 		RaiseError(L, "slice set: index out of range")
 	}
@@ -294,7 +293,7 @@ func slicemap__len(L *lua.State) int {
 
 func map__index(L *lua.State) int {
 	val, t := valueOfProxy(L, 1)
-	key := luaToGoValue(L, t.Key(), 2)
+	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
 	ret := val.MapIndex(key)
 	if ret.IsValid() {
 		GoToLua(L, ret.Type(), ret, false)
@@ -305,8 +304,8 @@ func map__index(L *lua.State) int {
 
 func map__newindex(L *lua.State) int {
 	m, t := valueOfProxy(L, 1)
-	key := luaToGoValue(L, t.Key(), 2)
-	val := luaToGoValue(L, t.Elem(), 3)
+	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
+	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
 	m.SetMapIndex(key, val)
 	return 0
 }
@@ -341,7 +340,7 @@ func slice__ipairs(L *lua.State) int {
 			L.PushNil()
 			return 1
 		}
-		GoToLua(L, nil, valueOf(idx+1), false) // report as 1-based index
+		GoToLua(L, nil, reflect.ValueOf(idx+1), false) // report as 1-based index
 		val := s.Index(idx)
 		GoToLua(L, nil, val, false)
 		return 2
@@ -405,7 +404,7 @@ func struct__newindex(L *lua.State) int {
 	}
 	field := st.FieldByName(name)
 	assertValid(L, field, st, name, "field")
-	val := luaToGoValue(L, field.Type(), 3)
+	val := reflect.ValueOf(LuaToGo(L, field.Type(), 3))
 	if isPointerToPrimitive(field) {
 		field.Elem().Set(val)
 	} else {
@@ -422,7 +421,7 @@ var (
 	tslice    = typeof((*[]interface{})(nil))
 	tmap      = typeof((*map[string]interface{})(nil))
 	null      = Null(0)
-	nullv     = valueOf(null)
+	nullv     = reflect.ValueOf(null)
 	nullables = map[reflect.Kind]bool{
 		reflect.Chan:      true,
 		reflect.Func:      true,
@@ -438,8 +437,8 @@ func isNil(val reflect.Value) bool {
 	return nullables[kind] && val.IsNil()
 }
 
-// Return the Lua table at 'idx' as a copied Go slice. If 't' is nil then the slice
-// type is []interface{}
+// CopyTableToSlice returns the Lua table at 'idx' as a copied Go slice.
+// If 't' is nil then the slice type is []interface{}
 func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	if t == nil {
 		t = tslice
@@ -449,7 +448,7 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	slice := reflect.MakeSlice(t, n, n)
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
-		val := luaToGoValue(L, te, -1)
+		val := reflect.ValueOf(LuaToGo(L, te, -1))
 		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
@@ -459,8 +458,8 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	return slice.Interface()
 }
 
-// Return the Lua table at 'idx' as a copied Go map. If 't' is nil then the map
-// type is map[string]interface{}
+// CopyTableToMap returns the Lua table at 'idx' as a copied Go map.
+// If 't' is nil then the map type is map[string]interface{}.
 func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	if t == nil {
 		t = tmap
@@ -473,8 +472,8 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	}
 	for L.Next(idx) != 0 {
 		// key at -2, value at -1
-		key := luaToGoValue(L, tk, -2)
-		val := luaToGoValue(L, te, -1)
+		key := reflect.ValueOf(LuaToGo(L, tk, -2))
+		val := reflect.ValueOf(LuaToGo(L, te, -1))
 		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
@@ -484,11 +483,12 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	return m.Interface()
 }
 
-// Copy matching Lua table entries to a struct, given the struct type
-// and the index on the Lua stack.
+// CopyTableToStruct copies matching Lua table entries to a struct, given the
+// struct type and the index on the Lua stack. Use the "lua" tag to set field
+// names.
 func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
-	was_ptr := t.Kind() == reflect.Ptr
-	if was_ptr {
+	wasPtr := t.Kind() == reflect.Ptr
+	if wasPtr {
 		t = t.Elem()
 	}
 	s := reflect.New(t) // T -> *T
@@ -516,19 +516,20 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 		key := L.ToString(-2)
 		f := ref.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
-			val := luaToGoValue(L, f.Type(), -1)
+			val := reflect.ValueOf(LuaToGo(L, f.Type(), -1))
 			f.Set(val)
 		}
 		L.Pop(1)
 	}
-	if was_ptr {
+	if wasPtr {
 		return s.Interface()
 	}
 	return s.Elem().Interface()
 }
 
-// Copy a Go slice to a Lua table. nils in both slices and structs
-// are represented as luar.null. Defines luar.slice2table
+// CopySliceToTable copies a Go slice to a Lua table.
+// 'nil' in both slices and structs are represented as 'luar.null'. Defines
+// 'luar.slice2table'.
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	if vslice.IsValid() && vslice.Type().Kind() == reflect.Slice {
 		n := vslice.Len()
@@ -543,16 +544,15 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 			L.SetTable(-3)
 		}
 		return 1
-	} else {
-		L.PushNil()
-		L.PushString("not a slice!")
 	}
+	L.PushNil()
+	L.PushString("not a slice!")
 	return 2
 }
 
-// Copy a Go struct to a Lua table. nils in both slices and structs
-// are represented as luar.null. Defines luar.struct2table
-// Use tags to set field names.
+// CopyStructToTable copies a Go struct to a Lua table.
+// 'nil' in both slices and structs are represented as 'luar.null'. Defines
+// 'luar.struct2table'. Use the "lua" tag to set field names.
 func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 	if vstruct.IsValid() && vstruct.Type().Kind() == reflect.Struct {
 		n := vstruct.NumField()
@@ -571,14 +571,14 @@ func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 			L.SetTable(-3)
 		}
 		return 1
-	} else {
-		L.PushNil()
-		L.PushString("not a struct!")
 	}
+	L.PushNil()
+	L.PushString("not a struct!")
 	return 2
 }
 
-// Copy a Go map to a Lua table, Defines luar.map2table
+// CopyMapToTable copies a Go map to a Lua table.
+// Defines 'luar.map2table'.
 func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 	if vmap.IsValid() && vmap.Type().Kind() == reflect.Map {
 		n := vmap.Len()
@@ -593,10 +593,9 @@ func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 			L.SetTable(-3)
 		}
 		return 1
-	} else {
-		L.PushNil()
-		L.PushString("not a map!")
 	}
+	L.PushNil()
+	L.PushString("not a map!")
 	return 2
 }
 
@@ -606,7 +605,7 @@ func typeof(v interface{}) reflect.Type {
 }
 
 var types = []reflect.Type{
-	nil, //Invalid Kind = iota
+	nil, // Invalid Kind = iota
 	typeof((*bool)(nil)),
 	typeof((*int)(nil)),
 	typeof((*int8)(nil)),
@@ -618,37 +617,36 @@ var types = []reflect.Type{
 	typeof((*uint16)(nil)),
 	typeof((*uint32)(nil)),
 	typeof((*uint64)(nil)),
-	nil, //Uintptr
+	nil, // Uintptr
 	typeof((*float32)(nil)),
 	typeof((*float64)(nil)),
-	nil, //Complex64
-	nil, //Complex128
-	nil, //Array
-	nil, //Chan
-	nil, //Func
-	nil, //Interface
-	nil, //Map
-	nil, //Ptr
-	nil, //Slice
+	nil, // Complex64
+	nil, // Complex128
+	nil, // Array
+	nil, // Chan
+	nil, // Func
+	nil, // Interface
+	nil, // Map
+	nil, // Ptr
+	nil, // Slice
 	typeof((*string)(nil)),
-	nil, //Struct
-	nil, //UnsafePointer
+	nil, // Struct
+	nil, // UnsafePointer
 }
 
 func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
 	pt := types[int(kind)]
 	if pt != nil && pt != t {
 		return pt
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func isPointerToPrimitive(v reflect.Value) bool {
 	return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil
 }
 
-// Push a Go value 'val' of type 't' on the Lua stack.
+// GoToLua pushes a Go value 'val' of type 't' on the Lua stack.
 // If we haven't been given a concrete type, use the type of the value
 // and unbox any interfaces.  You can force slices and maps to be copied
 // over as tables by setting 'dontproxify' to true.
@@ -661,7 +659,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		t = val.Type()
 	}
 	if t.Kind() == reflect.Interface && !val.IsNil() { // unbox interfaces!
-		val = valueOf(val.Interface())
+		val = reflect.ValueOf(val.Interface())
 		t = val.Type()
 	}
 	if t.Kind() == reflect.Ptr {
@@ -669,12 +667,13 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	}
 	kind := t.Kind()
 
-	// underlying type is 'primitive' ? wrap it as a proxy!
+	// Underlying type is 'primitive'? Wrap it as a proxy!
 	if isPrimitiveDerived(t, kind) != nil {
-		makeValueProxy(L, val, cINTERFACE_META)
+		makeValueProxy(L, val, cInterfaceMeta)
 		return
 	}
 
+	// TODO: Remove braces?
 	switch kind {
 	case reflect.Float64, reflect.Float32:
 		{
@@ -699,7 +698,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	case reflect.Slice:
 		{
 			if !dontproxify {
-				makeValueProxy(L, val, cSLICE_META)
+				makeValueProxy(L, val, cSliceMeta)
 			} else {
 				CopySliceToTable(L, val)
 			}
@@ -707,7 +706,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	case reflect.Map:
 		{
 			if !dontproxify {
-				makeValueProxy(L, val, cMAP_META)
+				makeValueProxy(L, val, cMapMeta)
 			} else {
 				CopyMapToTable(L, val)
 			}
@@ -724,7 +723,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 						L.PushNil()
 						return
 					}
-					makeValueProxy(L, val, cSTRUCT_META)
+					makeValueProxy(L, val, cStructMeta)
 				}
 			} else {
 				CopyStructToTable(L, val)
@@ -737,20 +736,15 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 			} else if val.IsNil() {
 				L.PushNil()
 			} else {
-				makeValueProxy(L, val, cINTERFACE_META)
+				makeValueProxy(L, val, cInterfaceMeta)
 			}
 		}
 	}
 }
 
-// A wrapper of luaToGo that return reflect.Value
-func luaToGoValue(L *lua.State, t reflect.Type, idx int) reflect.Value {
-	return valueOf(LuaToGo(L, t, idx))
-}
-
-// Convert a Lua value 'idx' on the stack to the Go value of desired type 't'. Handles
-// numerical and string types in a straightforward way, and will convert tables to
-// either map or slice types.
+// LuaToGo converts a Lua value 'idx' on the stack to the Go value of desired type 't'.
+// Handles numerical and string types in a straightforward way, and will convert
+// tables to either map or slice types.
 func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 	var value interface{}
 	var kind reflect.Kind
@@ -780,11 +774,9 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		switch kind {
 		case reflect.Bool:
-			{
-				ptr := new(bool)
-				*ptr = bool(L.ToBoolean(idx))
-				value = *ptr
-			}
+			ptr := new(bool)
+			*ptr = L.ToBoolean(idx)
+			value = *ptr
 		default:
 			value = reflect.Zero(t).Interface()
 		}
@@ -896,9 +888,8 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		if t == nil && !istable {
 			if isValueProxy(L, idx) {
 				return unwrapProxy(L, idx)
-			} else {
-				return NewLuaObject(L, idx)
 			}
+			return NewLuaObject(L, idx)
 		}
 		switch kind {
 		case reflect.Slice:
@@ -973,16 +964,15 @@ func functionArgRetTypes(funt reflect.Type) (targs, tout []reflect.Type) {
 // http://play.golang.org/p/TZyOLzu2y-
 func valueOfNil(ival interface{}) reflect.Value {
 	if ival == nil {
-		return valueOf(&ival).Elem()
-	} else {
-		return valueOf(ival)
+		return reflect.ValueOf(&ival).Elem()
 	}
+	return reflect.ValueOf(ival)
 }
 
 // GoLuaFunc converts an arbitrary Go function into a Lua-compatible GoFunction.
-// There are special optimized cases for functions that go from strings to strings,
-// and doubles to doubles, but otherwise Go
-// reflection is used to provide a generic wrapper function
+// There are special optimized cases for functions that go from strings to
+// strings, and doubles to doubles, but otherwise Go reflection is used to
+// provide a generic wrapper function.
 func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 	switch f := fun.(type) {
 	case func(*lua.State) int:
@@ -999,57 +989,61 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 		}
 	default:
 	}
-	var funv reflect.Value
+
+	var funV reflect.Value
 	switch ff := fun.(type) {
 	case reflect.Value:
-		funv = ff
+		funV = ff
 	default:
-		funv = valueOf(fun)
+		funV = reflect.ValueOf(fun)
 	}
-	funt := funv.Type()
-	targs, tout := functionArgRetTypes(funt)
+
+	funT := funV.Type()
+	tArgs, tOut := functionArgRetTypes(funT)
 	return func(L *lua.State) int {
 		var lastT reflect.Type
-		orig_targs := targs
-		isVariadic := funt.IsVariadic()
+		origTArgs := tArgs
+		isVariadic := funT.IsVariadic()
+
 		if isVariadic {
-			n := len(targs)
-			lastT = targs[n-1].Elem()
-			targs = targs[0 : n-1]
+			n := len(tArgs)
+			lastT = tArgs[n-1].Elem()
+			tArgs = tArgs[0 : n-1]
 		}
-		args := make([]reflect.Value, len(targs))
-		for i, t := range targs {
+
+		args := make([]reflect.Value, len(tArgs))
+		for i, t := range tArgs {
 			val := LuaToGo(L, t, i+1)
 			args[i] = valueOfNil(val)
-			//println(i,args[i].String())
 		}
+
 		if isVariadic {
 			n := L.GetTop()
-			for i := len(targs) + 1; i <= n; i++ {
-				ival := LuaToGo(L, lastT, i)
-				args = append(args, valueOfNil(ival))
+			for i := len(tArgs) + 1; i <= n; i++ {
+				iVal := LuaToGo(L, lastT, i)
+				args = append(args, valueOfNil(iVal))
 			}
-			targs = orig_targs
+			tArgs = origTArgs
 		}
-		resv := callGo(L, funv, args)
-		for i, val := range resv {
-			GoToLua(L, tout[i], val, false)
+		resV := callGo(L, funV, args)
+		for i, val := range resV {
+			GoToLua(L, tOut[i], val, false)
 		}
-		return len(resv)
+		return len(resV)
 	}
 }
 
 func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Value {
 	defer func() {
 		if x := recover(); x != nil {
-			RaiseError(L, sprintf("error %s", x))
+			RaiseError(L, fmt.Sprintf("error %s", x))
 		}
 	}()
 	resv := funv.Call(args)
 	return resv
 }
 
-// Useful alias for passing maps of strings to values to luar
+// Map is an alias for passing maps of strings to values to luar.
 type Map map[string]interface{}
 
 func register(L *lua.State, table string, values Map, convertFun bool) {
@@ -1076,7 +1070,7 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 				L.PushGoFunction(lf)
 			}
 		} else {
-			GoToLua(L, t, valueOf(val), false)
+			GoToLua(L, t, reflect.ValueOf(val), false)
 		}
 		L.SetField(-2, name)
 	}
@@ -1085,28 +1079,29 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 	}
 }
 
-// Make a number of 'raw' Go functions or values available in Lua code. (Raw
-// Go functions access the Lua state directly and have signature (L *lua.State) int.)
+// RawRegister makes a number of 'raw' Go functions or values available in Lua
+// code. Raw Go functions access the Lua state directly and have signature
+// '(*lua.State) int'.
 func RawRegister(L *lua.State, table string, values Map) {
 	register(L, table, values, false)
 }
 
-// Make a number of Go functions or values available in Lua code. If table is non-nil,
-// then create or reuse a global table of that name and put the values
-// in it. If table is '*' then assume that the table is already on the stack.
-// values is a map of strings to Go values.
+// Register makes a number of Go functions or values available in Lua code.
+// If table is non-nil, then create or reuse a global table of that name and put
+// the values in it. If table is '*' then assume that the table is already on
+// the stack. values is a map of strings to Go values.
 func Register(L *lua.State, table string, values Map) {
 	register(L, table, values, true)
 }
 
-// Encapsulates a Lua object like a table or a function
+// LuaObject encapsulates a Lua object like a table or a function.
 type LuaObject struct {
 	L    *lua.State
 	Ref  int
 	Type string
 }
 
-// Index the Lua object using a string key, returning Go equivalent
+// Get returns the Go value indexed at 'key' in the Lua object.
 func (lo *LuaObject) Get(key string) interface{} {
 	lo.Push() // the table
 	Lookup(lo.L, key, -1)
@@ -1115,7 +1110,7 @@ func (lo *LuaObject) Get(key string) interface{} {
 	return val
 }
 
-// Index the Lua object using a string key, returning Lua object
+// GetObject returns the Lua object indexed at 'key' in the Lua object.
 func (lo *LuaObject) GetObject(key string) *LuaObject {
 	lo.Push() // the table
 	Lookup(lo.L, key, -1)
@@ -1124,7 +1119,7 @@ func (lo *LuaObject) GetObject(key string) *LuaObject {
 	return val
 }
 
-// Index the Lua object using integer index
+// Geti return the value indexed at 'idx'.
 func (lo *LuaObject) Geti(idx int64) interface{} {
 	L := lo.L
 	lo.Push() // the table
@@ -1135,18 +1130,18 @@ func (lo *LuaObject) Geti(idx int64) interface{} {
 	return val
 }
 
-// Set the value at a given idx
+// Set sets the value at a given index 'idx'.
 func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
 	L := lo.L
 	lo.Push() // the table
-	GoToLua(L, nil, valueOf(idx), false)
-	GoToLua(L, nil, valueOf(val), false)
+	GoToLua(L, nil, reflect.ValueOf(idx), false)
+	GoToLua(L, nil, reflect.ValueOf(val), false)
 	L.SetTable(-3)
 	L.Pop(1) // the  table
 	return val
 }
 
-// Copy values between two tables in the same state
+// Setv copies values between two tables in the same state.
 func (lo *LuaObject) Setv(src *LuaObject, keys ...string) {
 	L := lo.L
 	lo.Push()  // destination table at -2
@@ -1158,8 +1153,8 @@ func (lo *LuaObject) Setv(src *LuaObject, keys ...string) {
 	L.Pop(2) // clear the tables
 }
 
-// Convenience function for converting a set of values into a corresponding
-// slice of their types
+// Types is a convenience function for converting a set of values into a
+// corresponding slice of their types.
 func Types(values ...interface{}) []reflect.Type {
 	res := make([]reflect.Type, len(values))
 	for i, arg := range values {
@@ -1168,7 +1163,16 @@ func Types(values ...interface{}) []reflect.Type {
 	return res
 }
 
-// Call a Lua function, given the desired return types and the arguments.
+// Callf calls a Lua function, given the desired return types and the arguments.
+//
+// Callf is used whenever:
+//
+// - the Lua function has multiple return values;
+//
+// - and/or you have exact types for these values.
+//
+// The first argument may be `nil` and can be used to access multiple return
+// values without caring about the exact conversion.
 func (lo *LuaObject) Callf(rtypes []reflect.Type, args ...interface{}) (res []interface{}, err error) {
 	L := lo.L
 	if rtypes == nil {
@@ -1177,7 +1181,7 @@ func (lo *LuaObject) Callf(rtypes []reflect.Type, args ...interface{}) (res []in
 	res = make([]interface{}, len(rtypes))
 	lo.Push()                  // the function...
 	for _, arg := range args { // push the args
-		GoToLua(L, nil, valueOf(arg), false)
+		GoToLua(L, nil, reflect.ValueOf(arg), false)
 	}
 	err = L.Call(len(args), 1)
 	if err == nil {
@@ -1189,28 +1193,28 @@ func (lo *LuaObject) Callf(rtypes []reflect.Type, args ...interface{}) (res []in
 	return
 }
 
-// Call a Lua function, and return a single value, converted in a default way.
+// Call calls a Lua function and return a single value, converted in a default way.
 func (lo *LuaObject) Call(args ...interface{}) (res interface{}, err error) {
 	var sres []interface{}
 	sres, err = lo.Callf(nil, args...)
 	if err != nil {
 		res = nil
 		return
-	} else {
-		return sres[0], nil
 	}
+	return sres[0], nil
 }
 
-// Push this Lua object on the stack
+// Push pushes this Lua object on the stack.
 func (lo *LuaObject) Push() {
 	lo.L.RawGeti(lua.LUA_REGISTRYINDEX, lo.Ref)
 }
 
-// free the Lua reference of this object
+// Close frees the Lua reference of this object.
 func (lo *LuaObject) Close() {
 	lo.L.Unref(lua.LUA_REGISTRYINDEX, lo.Ref)
 }
 
+// LuaTableIter is the Go equivalent of a Lua table iterator.
 type LuaTableIter struct {
 	lo    *LuaObject
 	first bool
@@ -1218,18 +1222,18 @@ type LuaTableIter struct {
 	Value interface{}
 }
 
-// Create a Lua table iterator
+// Iter creates a Lua table iterator.
 func (lo *LuaObject) Iter() *LuaTableIter {
 	return &LuaTableIter{lo, true, nil, nil}
 }
 
-// Get next key/value pair from table
+// Next gets the next key/value pair from the table.
+// TODO: Move to example.
 //  iter := lo.Iter()
 //  keys := []string{}
 //  for iter.Next() {
 //     keys = append(keys, iter.Key.(string))
 //  }
-//
 func (ti *LuaTableIter) Next() bool {
 	L := ti.lo.L
 	if ti.first {
@@ -1240,15 +1244,15 @@ func (ti *LuaTableIter) Next() bool {
 	// table is under the key
 	if L.Next(-2) == 0 {
 		return false
-	} else {
-		ti.Key = LuaToGo(L, nil, -2)
-		ti.Value = LuaToGo(L, nil, -1)
-		L.Pop(1) // drop value, key is now on top
 	}
+
+	ti.Key = LuaToGo(L, nil, -2)
+	ti.Value = LuaToGo(L, nil, -1)
+	L.Pop(1) // drop value, key is now on top
 	return true
 }
 
-// A new LuaObject from stack index.
+// NewLuaObject creates a new LuaObject from stack index.
 func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	tp := L.LTypename(idx)
 	L.PushValue(idx)
@@ -1256,7 +1260,8 @@ func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	return &LuaObject{L, ref, tp}
 }
 
-// A new LuaObject from global qualified name, using Lookup.
+// NewLuaObjectFromName creates a new LuaObject from global qualified name, using
+// Lookup.
 func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 	Lookup(L, path, 0)
 	val := NewLuaObject(L, -1)
@@ -1264,14 +1269,14 @@ func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 	return val
 }
 
-// A new LuaObject from a Go value. Note that this _will_ convert any
-// slices or maps into Lua tables.
+// NewLuaObjectFromValue creates a new LuaObject from a Go value.
+// Note that this _will_ convert any slices or maps into Lua tables.
 func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
-	GoToLua(L, nil, valueOf(val), true)
+	GoToLua(L, nil, reflect.ValueOf(val), true)
 	return NewLuaObject(L, -1)
 }
 
-// new LuaObject refering to the global environment
+// Global creates a new LuaObject refering to the global environment.
 func Global(L *lua.State) *LuaObject {
 	L.GetGlobal("_G")
 	val := NewLuaObject(L, -1)
@@ -1279,10 +1284,11 @@ func Global(L *lua.State) *LuaObject {
 	return val
 }
 
-// Look up a Lua value by its full name. If idx is 0, then this name
-// is assumed to start in the global table, e.g. "string.gsub".
-// With non-zero idx, can be used to look up subfields of a table.
-// It terminates with a nil value if we cannot continue the lookup...
+// Lookup will search a Lua value by its full name.
+//
+// If idx is 0, then this name is assumed to start in the global table, e.g.
+// "string.gsub". With non-zero idx, it can be used to look up subfields of a
+// table. It terminates with a nil value if we cannot continue the lookup.
 func Lookup(L *lua.State, path string, idx int) {
 	parts := strings.Split(path, ".")
 	if idx != 0 {
@@ -1300,27 +1306,27 @@ func Lookup(L *lua.State, path string, idx int) {
 }
 
 func map2table(L *lua.State) int {
-	return CopyMapToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
+	return CopyMapToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
 }
 
 func slice2table(L *lua.State) int {
-	return CopySliceToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
+	return CopySliceToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
 }
 
 func struct2table(L *lua.State) int {
-	return CopyStructToTable(L, valueOf(unwrapProxyOrComplain(L, 1)))
+	return CopyStructToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
 }
 
 func makeMap(L *lua.State) int {
 	m := reflect.MakeMap(tmap)
-	makeValueProxy(L, m, cMAP_META)
+	makeValueProxy(L, m, cMapMeta)
 	return 1
 }
 
 func makeSlice(L *lua.State) int {
 	n := L.OptInteger(1, 0)
 	s := reflect.MakeSlice(tslice, n, n+1)
-	makeValueProxy(L, s, cSLICE_META)
+	makeValueProxy(L, s, cSliceMeta)
 	return 1
 }
 
@@ -1345,25 +1351,35 @@ function ipairs(t)
 end
 `
 
-// Make and initialize a new Lua state. Populates luar table with five functions:
-// map2table, slice2table, map, slice, type, and value.
-// This makes customized pairs/ipairs // functions available so that __pairs/__ipairs
+// Init makes and initialize a new pre-configured Lua state. It is not required
+// for using the 'GoToLua' and 'LuaToGo' functions; it is needed for proxy
+// conversions however.
+//
+// It populates the 'luar' table with the following functions:
+// 	'map2table', 'slice2table', 'struct2table', 'map', 'slice', 'type', 'sub', 'append', 'raw',
+// and values:
+//  'null'.
+//
+// This replaces the pairs/ipairs functions so that __pairs/__ipairs
 // can be used, Lua 5.2 style.
 func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
 	initializeProxies(L)
-	L.DoString(setup)
+	_ = L.DoString(setup) // Never fails.
 	RawRegister(L, "luar", Map{
-		"map2table":   map2table,
-		"slice2table": slice2table,
-		"map":         makeMap,
-		"slice":       makeSlice,
-		"type":        proxyType,
-		"sub":         sliceSub,
-		"append":      sliceAppend,
-		"raw":         proxyRaw,
-		"null":        null,
+		// Functions.
+		"map2table":    map2table,
+		"slice2table":  slice2table,
+		"struct2table": struct2table,
+		"map":          makeMap,
+		"slice":        makeSlice,
+		"type":         proxyType,
+		"sub":          sliceSub,
+		"append":       sliceAppend,
+		"raw":          proxyRaw,
+		// Values.
+		"null": null,
 	})
 	Register(L, "luar", Map{
 		"value": reflect.ValueOf,

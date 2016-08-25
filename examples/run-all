@@ -1,7 +1,0 @@
-for i in *.go
-do
-    if [ "$i" != "luar.go" ];
-    then
-        go run $i
-    fi
-done
