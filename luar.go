@@ -786,12 +786,6 @@ func (lo *LuaObject) Iter() *LuaTableIter {
 }
 
 // Next gets the next key/value pair from the table.
-// TODO: Move to example.
-//  iter := lo.Iter()
-//  keys := []string{}
-//  for iter.Next() {
-//     keys = append(keys, iter.Key.(string))
-//  }
 func (ti *LuaTableIter) Next() bool {
 	L := ti.lo.L
 	if ti.first {

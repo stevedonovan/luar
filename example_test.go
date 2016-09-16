@@ -375,6 +375,42 @@ func ExampleNewLuaObjectFromValue() {
 	// hello Dolly go where you belong
 }
 
+func ExampleLuaTableIter_Next() {
+	const code = `
+return {
+  foo = 17,
+  bar = 18,
+}
+`
+
+	L := luar.Init()
+	defer L.Close()
+
+	err := L.DoString(code)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	lo := luar.NewLuaObject(L, -1)
+
+	iter := lo.Iter()
+	keys := []string{}
+	values := map[string]float64{}
+	for iter.Next() {
+		k := iter.Key.(string)
+		keys = append(keys, k)
+		values[k] = iter.Value.(float64)
+	}
+	sort.Strings(keys)
+
+	for _, v := range keys {
+		fmt.Println(v, values[v])
+	}
+	// Output:
+	// bar 18
+	// foo 17
+}
+
 func ExampleRegister_sandbox() {
 	const code = `
     Print("foo")
