@@ -24,7 +24,8 @@ func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name strin
 	}
 }
 
-// TODO: Unexport? Or comment.
+// Null is used to define 'luar.null' which is used in place of 'nil' when
+// converting slices and structs.
 type Null int
 
 var (
