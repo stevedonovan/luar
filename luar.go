@@ -284,71 +284,52 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		return
 	}
 
-	// TODO: Remove braces?
 	switch kind {
 	case reflect.Float64, reflect.Float32:
-		{
-			L.PushNumber(val.Float())
-		}
+		L.PushNumber(val.Float())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		{
-			L.PushNumber(float64(val.Int()))
-		}
+		L.PushNumber(float64(val.Int()))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		{
-			L.PushNumber(float64(val.Uint()))
-		}
+		L.PushNumber(float64(val.Uint()))
 	case reflect.String:
-		{
-			L.PushString(val.String())
-		}
+		L.PushString(val.String())
 	case reflect.Bool:
-		{
-			L.PushBoolean(val.Bool())
-		}
+		L.PushBoolean(val.Bool())
 	case reflect.Slice:
-		{
-			if !dontproxify {
-				makeValueProxy(L, val, cSliceMeta)
-			} else {
-				CopySliceToTable(L, val)
-			}
+		if !dontproxify {
+			makeValueProxy(L, val, cSliceMeta)
+		} else {
+			CopySliceToTable(L, val)
 		}
 	case reflect.Map:
-		{
-			if !dontproxify {
-				makeValueProxy(L, val, cMapMeta)
-			} else {
-				CopyMapToTable(L, val)
-			}
+		if !dontproxify {
+			makeValueProxy(L, val, cMapMeta)
+		} else {
+			CopyMapToTable(L, val)
 		}
 	case reflect.Struct:
-		{
-			if !dontproxify {
-				if v, ok := val.Interface().(error); ok {
-					L.PushString(v.Error())
-				} else if v, ok := val.Interface().(*LuaObject); ok {
-					v.Push()
-				} else {
-					if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && !val.Elem().IsValid() {
-						L.PushNil()
-						return
-					}
-					makeValueProxy(L, val, cStructMeta)
-				}
-			} else {
-				CopyStructToTable(L, val)
-			}
-		}
-	default:
-		{
+		if !dontproxify {
 			if v, ok := val.Interface().(error); ok {
 				L.PushString(v.Error())
-			} else if val.IsNil() {
-				L.PushNil()
+			} else if v, ok := val.Interface().(*LuaObject); ok {
+				v.Push()
 			} else {
-				makeValueProxy(L, val, cInterfaceMeta)
+				if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && !val.Elem().IsValid() {
+					L.PushNil()
+					return
+				}
+				makeValueProxy(L, val, cStructMeta)
 			}
+		} else {
+			CopyStructToTable(L, val)
+		}
+	default:
+		if v, ok := val.Interface().(error); ok {
+			L.PushString(v.Error())
+		} else if val.IsNil() {
+			L.PushNil()
+		} else {
+			makeValueProxy(L, val, cInterfaceMeta)
 		}
 	}
 }
@@ -397,12 +378,10 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		switch kind {
 		case reflect.String:
-			{
-				tos := L.ToString(idx)
-				ptr := new(string)
-				*ptr = tos
-				value = *ptr
-			}
+			tos := L.ToString(idx)
+			ptr := new(string)
+			*ptr = tos
+			value = *ptr
 		default:
 			value = reflect.Zero(t).Interface()
 		}
@@ -412,77 +391,53 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		switch kind {
 		case reflect.Float64:
-			{
-				ptr := new(float64)
-				*ptr = L.ToNumber(idx)
-				value = *ptr
-			}
+			ptr := new(float64)
+			*ptr = L.ToNumber(idx)
+			value = *ptr
 		case reflect.Float32:
-			{
-				ptr := new(float32)
-				*ptr = float32(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(float32)
+			*ptr = float32(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Int:
-			{
-				ptr := new(int)
-				*ptr = int(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(int)
+			*ptr = int(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Int8:
-			{
-				ptr := new(int8)
-				*ptr = int8(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(int8)
+			*ptr = int8(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Int16:
-			{
-				ptr := new(int16)
-				*ptr = int16(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(int16)
+			*ptr = int16(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Int32:
-			{
-				ptr := new(int32)
-				*ptr = int32(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(int32)
+			*ptr = int32(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Int64:
-			{
-				ptr := new(int64)
-				*ptr = int64(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(int64)
+			*ptr = int64(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Uint:
-			{
-				ptr := new(uint)
-				*ptr = uint(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(uint)
+			*ptr = uint(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Uint8:
-			{
-				ptr := new(uint8)
-				*ptr = uint8(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(uint8)
+			*ptr = uint8(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Uint16:
-			{
-				ptr := new(uint16)
-				*ptr = uint16(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(uint16)
+			*ptr = uint16(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Uint32:
-			{
-				ptr := new(uint32)
-				*ptr = uint32(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(uint32)
+			*ptr = uint32(L.ToNumber(idx))
+			value = *ptr
 		case reflect.Uint64:
-			{
-				ptr := new(uint64)
-				*ptr = uint64(L.ToNumber(idx))
-				value = *ptr
-			}
+			ptr := new(uint64)
+			*ptr = uint64(L.ToNumber(idx))
+			value = *ptr
 		default:
 			value = reflect.Zero(t).Interface()
 		}
@@ -504,51 +459,43 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 		switch kind {
 		case reflect.Slice:
-			{
-				// if we get a table, then copy its values to a new slice
-				if istable {
-					value = CopyTableToSlice(L, t, idx)
-				} else {
-					value = unwrapProxyOrComplain(L, idx)
-				}
+			// if we get a table, then copy its values to a new slice
+			if istable {
+				value = CopyTableToSlice(L, t, idx)
+			} else {
+				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Map:
-			{
-				if istable {
-					value = CopyTableToMap(L, t, idx)
-				} else {
-					value = unwrapProxyOrComplain(L, idx)
-				}
+			if istable {
+				value = CopyTableToMap(L, t, idx)
+			} else {
+				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Struct:
-			{
-				if istable {
-					value = CopyTableToStruct(L, t, idx)
-				} else {
-					value = unwrapProxyOrComplain(L, idx)
-				}
+			if istable {
+				value = CopyTableToStruct(L, t, idx)
+			} else {
+				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Interface:
-			{
-				if istable {
-					// have to make an executive decision here: tables with non-zero
-					// length are assumed to be slices!
-					if L.ObjLen(idx) > 0 {
-						value = CopyTableToSlice(L, nil, idx)
-					} else {
-						value = CopyTableToMap(L, nil, idx)
-					}
-				} else if L.IsNumber(idx) {
-					value = L.ToNumber(idx)
-				} else if L.IsString(idx) {
-					value = L.ToString(idx)
-				} else if L.IsBoolean(idx) {
-					value = L.ToBoolean(idx)
-				} else if L.IsNil(idx) {
-					return nil
+			if istable {
+				// have to make an executive decision here: tables with non-zero
+				// length are assumed to be slices!
+				if L.ObjLen(idx) > 0 {
+					value = CopyTableToSlice(L, nil, idx)
 				} else {
-					value = unwrapProxyOrComplain(L, idx)
+					value = CopyTableToMap(L, nil, idx)
 				}
+			} else if L.IsNumber(idx) {
+				value = L.ToNumber(idx)
+			} else if L.IsString(idx) {
+				value = L.ToString(idx)
+			} else if L.IsBoolean(idx) {
+				value = L.ToBoolean(idx)
+			} else if L.IsNil(idx) {
+				return nil
+			} else {
+				value = unwrapProxyOrComplain(L, idx)
 			}
 		default:
 			value = unwrapProxyOrComplain(L, idx)
