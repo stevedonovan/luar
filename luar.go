@@ -269,14 +269,23 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	if t == nil {
 		t = val.Type()
 	}
-	if t.Kind() == reflect.Interface && !val.IsNil() { // unbox interfaces!
+	// Unbox interfaces.
+	if t.Kind() == reflect.Interface && !val.IsNil() {
 		val = reflect.ValueOf(val.Interface())
 		t = val.Type()
 	}
-	if t.Kind() == reflect.Ptr {
+	// Follow pointers. We save the pointer Value in case we proxify.
+	valPtr := val
+	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
+		val = val.Elem()
 	}
 	kind := t.Kind()
+
+	if (valPtr.Kind() == reflect.Ptr || valPtr.Kind() == reflect.Interface) && !valPtr.Elem().IsValid() {
+		L.PushNil()
+		return
+	}
 
 	// Underlying type is 'primitive'? Wrap it as a proxy!
 	if isPrimitiveDerived(t, kind) != nil {
@@ -297,28 +306,24 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		L.PushBoolean(val.Bool())
 	case reflect.Slice:
 		if !dontproxify {
-			makeValueProxy(L, val, cSliceMeta)
+			makeValueProxy(L, valPtr, cSliceMeta)
 		} else {
 			CopySliceToTable(L, val)
 		}
 	case reflect.Map:
 		if !dontproxify {
-			makeValueProxy(L, val, cMapMeta)
+			makeValueProxy(L, valPtr, cMapMeta)
 		} else {
 			CopyMapToTable(L, val)
 		}
 	case reflect.Struct:
 		if !dontproxify {
-			if v, ok := val.Interface().(error); ok {
+			if v, ok := valPtr.Interface().(error); ok {
 				L.PushString(v.Error())
-			} else if v, ok := val.Interface().(*LuaObject); ok {
+			} else if v, ok := valPtr.Interface().(*LuaObject); ok {
 				v.Push()
 			} else {
-				if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && !val.Elem().IsValid() {
-					L.PushNil()
-					return
-				}
-				makeValueProxy(L, val, cStructMeta)
+				makeValueProxy(L, valPtr, cStructMeta)
 			}
 		} else {
 			CopyStructToTable(L, val)
@@ -329,7 +334,7 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		} else if val.IsNil() {
 			L.PushNil()
 		} else {
-			makeValueProxy(L, val, cInterfaceMeta)
+			makeValueProxy(L, valPtr, cInterfaceMeta)
 		}
 	}
 }

@@ -15,8 +15,7 @@ or structs. Methods defined on structs can be called, again using reflection. Do
 note that these methods will be callable using _dot-notation_ rather than colon
 notation!
 
-Pointer values to maps, slices, numbers and booleans will panic when directly
-passed to Lua. They are fine on and within structures however.
+Pointer values encode as the value pointed to when unproxified.
 
 The "lua" tag is used to match fields in struct conversion.
 
