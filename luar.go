@@ -318,10 +318,15 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		}
 	case reflect.Struct:
 		if !dontproxify {
-			if v, ok := valPtr.Interface().(error); ok {
-				L.PushString(v.Error())
-			} else if v, ok := valPtr.Interface().(*LuaObject); ok {
-				v.Push()
+			if valPtr.CanInterface() {
+				switch v := valPtr.Interface().(type) {
+				case error:
+					L.PushString(v.Error())
+				case *LuaObject:
+					v.Push()
+				default:
+					makeValueProxy(L, valPtr, cStructMeta)
+				}
 			} else {
 				makeValueProxy(L, valPtr, cStructMeta)
 			}
