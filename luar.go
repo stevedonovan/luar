@@ -462,13 +462,6 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 }
 
 func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
-	ptr := L.ToPointer(idx)
-	if ptr != 0 {
-		if val, ok := visited[ptr]; ok {
-			return val
-		}
-	}
-
 	var value interface{}
 
 	var kind reflect.Kind
@@ -579,7 +572,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 		fallthrough
 	default:
 		istable := L.IsTable(idx)
-		// if we don't know the type and the Lua object is userdata,
+		// If we don't know the type and the Lua object is userdata,
 		// then it might be a proxy for a Go object. Otherwise wrap
 		// it up as a LuaObject.
 		if t == nil && !istable {
@@ -592,25 +585,41 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 		case reflect.Slice:
 			// if we get a table, then copy its values to a new slice
 			if istable {
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
 				value = copyTableToSlice(L, t, idx, visited)
 			} else {
 				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Map:
 			if istable {
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
 				value = copyTableToMap(L, t, idx, visited)
 			} else {
 				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Struct:
 			if istable {
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
 				value = copyTableToStruct(L, t, idx, visited)
 			} else {
 				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Interface:
 			if istable {
-				// have to make an executive decision here: tables with non-zero
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
+				// We have to make an executive decision here: tables with non-zero
 				// length are assumed to be slices!
 				if L.ObjLen(idx) > 0 {
 					value = copyTableToSlice(L, nil, idx, visited)
