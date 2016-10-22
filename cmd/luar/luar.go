@@ -6,10 +6,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/GeertJohan/go.linenoise"
-	"github.com/stevedonovan/luar"
 	"os"
 	"strings"
+
+	"github.com/GeertJohan/go.linenoise"
+	"github.com/stevedonovan/luar"
 )
 
 // your packages go here
@@ -99,8 +100,8 @@ func main() {
 
 	register()
 
-	fmt.Println("luar 1.2 Copyright (C) 2013-2014 Steve Donovan")
-	fmt.Println("Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio")
+	fmt.Println("luar 1.2 Copyright (C) 2010-2016 Steve Donovan")
+	L.DoString(`if jit ~= nil then print(jit.version) else print(_VERSION) end`)
 
 	prompt := LUA_PROMPT1
 	code := ""
@@ -214,7 +215,7 @@ dump = function(t, options)
     else
       put('{')
       local mt_pairs, indices = mt and mt.__pairs
-      if not mt_pairs and #t > 0 then 
+      if not mt_pairs and #t > 0 then
         indices = {}
         for i = 1, #t do
           indices[i] = true
@@ -284,7 +285,7 @@ function lua_candidates(line)
   local front,partial = line:sub(1,i1-1), line:sub(i1)
   local prefix, last = partial:match '(.-)([^.:]*)$'
   local t, all = _G
-  if #prefix > 0 then        
+  if #prefix > 0 then
     local P = prefix:sub(1,-2)
     all = last == ''
     for w in P:gmatch '[^.:]+' do
@@ -294,8 +295,8 @@ function lua_candidates(line)
       end
     end
   end
-  prefix = front .. prefix  
-  local function append_candidates(t)  
+  prefix = front .. prefix
+  local function append_candidates(t)
     for k,v in pairs(t) do
       if all or k:sub(1,#last) == last then
         append(res,prefix..k)
@@ -327,7 +328,7 @@ local function sdump(st)
     for i = 1,n do
         local f,v = t.Field(i-1)
         if f.PkgPath == "" then --// only public fields!
-            v = val.Field(i-1)    
+            v = val.Field(i-1)
             cc[f.Name] = v.Interface()
         end
     end
@@ -340,11 +341,11 @@ local function sdump(st)
     end
     return cc
 end
-        
+
 mt = getmetatable(__DUMMY__)
 mt.__pairs = function(st)
     local cc = sdump(st)
     return pairs(cc)
 end
-        
+
 `
