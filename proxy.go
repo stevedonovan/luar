@@ -24,25 +24,25 @@ const (
 )
 
 var proxyMap = map[*valueProxy]reflect.Value{}
-var mu = &sync.Mutex{}
+var proxymu = &sync.Mutex{}
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	rawptr := L.NewUserdata(unsafe.Sizeof(valueProxy{}))
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
 	ptr.t = val.Type()
-	mu.Lock()
+	proxymu.Lock()
 	proxyMap[ptr] = val
-	mu.Unlock()
+	proxymu.Unlock()
 	L.LGetMetaTable(proxyMT)
 	L.SetMetaTable(-2)
 }
 
 func proxy__gc(L *lua.State) int {
 	vp := (*valueProxy)(L.ToUserdata(1))
-	mu.Lock()
+	proxymu.Lock()
 	delete(proxyMap, vp)
-	mu.Unlock()
+	proxymu.Unlock()
 	return 0
 }
 
