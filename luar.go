@@ -397,6 +397,9 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		}
 	case lua.LUA_TNUMBER:
 		if t == nil {
+			// Infering the type here (e.g. int if round value) would break backward
+			// compatibility and drift away from Lua's design: the numeric type is
+			// specified at compile time.
 			kind = reflect.Float64
 		}
 		switch kind {
