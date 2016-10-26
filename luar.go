@@ -930,7 +930,7 @@ end
 func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
-	initializeProxies(L)
+	InitProxies(L)
 	_ = L.DoString(setup) // Never fails.
 	RawRegister(L, "luar", Map{
 		// Functions.

@@ -166,7 +166,11 @@ func MakeChannel(L *lua.State) int {
 	return 1
 }
 
-func initializeProxies(L *lua.State) {
+// InitProxies sets up a Lua state for using Go<->Lua proxies.
+// This need not be called if the Lua state was created with Init().
+// This function is useful if you want to set up your Lua state manually, e.g.
+// with a custom allocator.
+func InitProxies(L *lua.State) {
 	flagValue := func() {
 		L.SetMetaMethod("__tostring", proxy__tostring)
 		L.SetMetaMethod("__gc", proxy__gc)
@@ -175,30 +179,31 @@ func initializeProxies(L *lua.State) {
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
 	}
+
 	L.NewMetaTable(cSliceMeta)
 	L.SetMetaMethod("__index", slice__index)
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__ipairs", slice__ipairs)
 	flagValue()
+
 	L.NewMetaTable(cMapMeta)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__pairs", map__pairs)
 	flagValue()
+
 	L.NewMetaTable(cStructMeta)
 	L.SetMetaMethod("__index", struct__index)
 	L.SetMetaMethod("__newindex", struct__newindex)
 	flagValue()
+
 	L.NewMetaTable(cInterfaceMeta)
 	L.SetMetaMethod("__index", interface__index)
 	flagValue()
+
 	L.NewMetaTable(cChannelMeta)
-	//~ RegisterFunctions(L,"*",FMap {
-	//~ "Send":channel_send,
-	//~ "Recv":channel_recv,
-	//~ })
 	L.NewTable()
 	L.PushGoFunction(channel_send)
 	L.SetField(-2, "Send")
