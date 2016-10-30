@@ -215,7 +215,7 @@ func InitProxies(L *lua.State) {
 
 func proxy__tostring(L *lua.State) int {
 	obj, _ := valueOfProxy(L, 1)
-	L.PushString(obj.Type().String())
+	L.PushString(fmt.Sprintf("%v", obj))
 	return 1
 }
 
