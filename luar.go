@@ -51,15 +51,23 @@ func isNil(val reflect.Value) bool {
 // CopyTableToSlice returns the Lua table at 'idx' as a copied Go slice.
 // If 't' is nil then the slice type is []interface{}
 func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
+	return copyTableToSlice(L, t, idx, map[uintptr]interface{}{})
+}
+
+func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
 	if t == nil {
 		t = tslice
 	}
 	te := t.Elem()
 	n := int(L.ObjLen(idx))
 	slice := reflect.MakeSlice(t, n, n)
+
+	ptr := L.ToPointer(idx)
+	visited[ptr] = slice.Interface()
+
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
-		val := reflect.ValueOf(LuaToGo(L, te, -1))
+		val := reflect.ValueOf(luaToGo(L, te, -1, visited))
 		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
@@ -72,19 +80,27 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 // CopyTableToMap returns the Lua table at 'idx' as a copied Go map.
 // If 't' is nil then the map type is map[string]interface{}.
 func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
+	return copyTableToMap(L, t, idx, map[uintptr]interface{}{})
+}
+
+func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
 	if t == nil {
 		t = tmap
 	}
 	te, tk := t.Elem(), t.Key()
 	m := reflect.MakeMap(t)
+
+	ptr := L.ToPointer(idx)
+	visited[ptr] = m.Interface()
+
 	L.PushNil()
 	if idx < 0 {
 		idx--
 	}
 	for L.Next(idx) != 0 {
 		// key at -2, value at -1
-		key := reflect.ValueOf(LuaToGo(L, tk, -2))
-		val := reflect.ValueOf(LuaToGo(L, te, -1))
+		key := reflect.ValueOf(luaToGo(L, tk, -2, visited))
+		val := reflect.ValueOf(luaToGo(L, te, -1, visited))
 		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
@@ -98,12 +114,22 @@ func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 // struct type and the index on the Lua stack. Use the "lua" tag to set field
 // names.
 func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
+	return copyTableToStruct(L, t, idx, map[uintptr]interface{}{})
+}
+
+func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
 	wasPtr := t.Kind() == reflect.Ptr
 	if wasPtr {
 		t = t.Elem()
 	}
 	s := reflect.New(t) // T -> *T
 	ref := s.Elem()
+
+	ptr := L.ToPointer(idx)
+	if wasPtr {
+		visited[ptr] = s.Interface()
+	}
+	visited[ptr] = s.Elem().Interface()
 
 	// Associate Lua keys with Go fields: tags have priority over matching field
 	// name.
@@ -127,7 +153,7 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 		key := L.ToString(-2)
 		f := ref.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
-			val := reflect.ValueOf(LuaToGo(L, f.Type(), -1))
+			val := reflect.ValueOf(luaToGo(L, f.Type(), -1, visited))
 			f.Set(val)
 		}
 		L.Pop(1)
@@ -142,16 +168,23 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 // 'nil' in both slices and structs are represented as 'luar.null'. Defines
 // 'luar.slice2table'.
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
+	v := newVisitor(L)
+	defer v.close()
+	return copySliceToTable(L, vslice, v)
+}
+
+func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 	if vslice.IsValid() && vslice.Type().Kind() == reflect.Slice {
 		n := vslice.Len()
 		L.CreateTable(n, 0)
+		visited.mark(vslice)
 		for i := 0; i < n; i++ {
 			L.PushInteger(int64(i + 1))
 			v := vslice.Index(i)
 			if isNil(v) {
 				v = nullv
 			}
-			GoToLua(L, nil, v, true)
+			goToLua(L, nil, v, true, visited)
 			L.SetTable(-3)
 		}
 		return 1
@@ -165,9 +198,16 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 // 'nil' in both slices and structs are represented as 'luar.null'. Defines
 // 'luar.struct2table'. Use the "lua" tag to set field names.
 func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
+	v := newVisitor(L)
+	defer v.close()
+	return copyStructToTable(L, vstruct, v)
+}
+
+func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int {
 	if vstruct.IsValid() && vstruct.Type().Kind() == reflect.Struct {
 		n := vstruct.NumField()
 		L.CreateTable(n, 0)
+		visited.mark(vstruct)
 		for i := 0; i < n; i++ {
 			st := vstruct.Type()
 			field := st.Field(i)
@@ -176,9 +216,9 @@ func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 			if tag != "" {
 				key = tag
 			}
-			GoToLua(L, nil, reflect.ValueOf(key), true)
+			goToLua(L, nil, reflect.ValueOf(key), true, visited)
 			v := vstruct.Field(i)
-			GoToLua(L, nil, v, true)
+			goToLua(L, nil, v, true, visited)
 			L.SetTable(-3)
 		}
 		return 1
@@ -191,16 +231,23 @@ func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 // CopyMapToTable copies a Go map to a Lua table.
 // Defines 'luar.map2table'.
 func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
+	v := newVisitor(L)
+	defer v.close()
+	return copyMapToTable(L, vmap, v)
+}
+
+func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) int {
 	if vmap.IsValid() && vmap.Type().Kind() == reflect.Map {
 		n := vmap.Len()
 		L.CreateTable(0, n)
+		visited.mark(vmap)
 		for _, key := range vmap.MapKeys() {
 			v := vmap.MapIndex(key)
-			GoToLua(L, nil, key, false)
+			goToLua(L, nil, key, false, visited)
 			if isNil(v) {
 				v = nullv
 			}
-			GoToLua(L, nil, v, true)
+			goToLua(L, nil, v, true, visited)
 			L.SetTable(-3)
 		}
 		return 1
@@ -257,11 +304,62 @@ func isPointerToPrimitive(v reflect.Value) bool {
 	return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil
 }
 
+// visitor holds the index to the table in LUA_REGISTRYINDEX with all the tables
+// we ran across during a GoToLua conversion.
+type visitor struct {
+	L     *lua.State
+	index int
+}
+
+func newVisitor(L *lua.State) visitor {
+	var v visitor
+	v.L = L
+	v.L.NewTable()
+	v.index = v.L.Ref(lua.LUA_REGISTRYINDEX)
+	return v
+}
+
+// Push visited value on top of the stack.
+// If the value was not visited, return false.
+func (v *visitor) push(val reflect.Value) bool {
+	ptr := val.Pointer()
+	v.L.RawGeti(lua.LUA_REGISTRYINDEX, v.index)
+	v.L.RawGeti(-1, int(ptr))
+	if v.L.IsNil(-1) {
+		// Not visited.
+		v.L.Pop(2)
+		return false
+	}
+	v.L.Replace(-2)
+	return true
+}
+
+// Mark value on top of the stack as visited using the registry index.
+func (v *visitor) mark(val reflect.Value) {
+	ptr := val.Pointer()
+	v.L.RawGeti(lua.LUA_REGISTRYINDEX, v.index)
+	// Copy value on top.
+	v.L.PushValue(-2)
+	// Set value to table.
+	v.L.RawSeti(-2, int(ptr))
+	v.L.Pop(1)
+}
+
+func (v *visitor) close() {
+	v.L.Unref(lua.LUA_REGISTRYINDEX, v.index)
+}
+
 // GoToLua pushes a Go value 'val' of type 't' on the Lua stack.
 // If we haven't been given a concrete type, use the type of the value
 // and unbox any interfaces.  You can force slices and maps to be copied
 // over as tables by setting 'dontproxify' to true.
 func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) {
+	v := newVisitor(L)
+	goToLua(L, t, val, dontproxify, v)
+	v.close()
+}
+
+func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, visited visitor) {
 	if !val.IsValid() {
 		L.PushNil()
 		return
@@ -277,6 +375,9 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	// Follow pointers. We save the pointer Value in case we proxify.
 	valPtr := val
 	for t.Kind() == reflect.Ptr {
+		if visited.push(val) {
+			return
+		}
 		t = t.Elem()
 		val = val.Elem()
 	}
@@ -308,13 +409,19 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 		if !dontproxify {
 			makeValueProxy(L, valPtr, cSliceMeta)
 		} else {
-			CopySliceToTable(L, val)
+			if visited.push(val) {
+				return
+			}
+			copySliceToTable(L, val, visited)
 		}
 	case reflect.Map:
 		if !dontproxify {
 			makeValueProxy(L, valPtr, cMapMeta)
 		} else {
-			CopyMapToTable(L, val)
+			if visited.push(val) {
+				return
+			}
+			copyMapToTable(L, val, visited)
 		}
 	case reflect.Struct:
 		if !dontproxify {
@@ -331,7 +438,10 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 				makeValueProxy(L, valPtr, cStructMeta)
 			}
 		} else {
-			CopyStructToTable(L, val)
+			if visited.push(val) {
+				return
+			}
+			copyStructToTable(L, val, visited)
 		}
 	default:
 		if v, ok := val.Interface().(error); ok {
@@ -348,9 +458,13 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 // Handles numerical and string types in a straightforward way, and will convert
 // tables to either map or slice types.
 func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
-	var value interface{}
-	var kind reflect.Kind
+	return luaToGo(L, t, idx, map[uintptr]interface{}{})
+}
 
+func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
+	var value interface{}
+
+	var kind reflect.Kind
 	if t != nil { // let the Lua type drive the conversion...
 		if t.Kind() == reflect.Ptr {
 			kind = t.Elem().Kind()
@@ -461,7 +575,7 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		fallthrough
 	default:
 		istable := L.IsTable(idx)
-		// if we don't know the type and the Lua object is userdata,
+		// If we don't know the type and the Lua object is userdata,
 		// then it might be a proxy for a Go object. Otherwise wrap
 		// it up as a LuaObject.
 		if t == nil && !istable {
@@ -474,30 +588,46 @@ func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 		case reflect.Slice:
 			// if we get a table, then copy its values to a new slice
 			if istable {
-				value = CopyTableToSlice(L, t, idx)
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
+				value = copyTableToSlice(L, t, idx, visited)
 			} else {
 				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Map:
 			if istable {
-				value = CopyTableToMap(L, t, idx)
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
+				value = copyTableToMap(L, t, idx, visited)
 			} else {
 				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Struct:
 			if istable {
-				value = CopyTableToStruct(L, t, idx)
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
+				value = copyTableToStruct(L, t, idx, visited)
 			} else {
 				value = unwrapProxyOrComplain(L, idx)
 			}
 		case reflect.Interface:
 			if istable {
-				// have to make an executive decision here: tables with non-zero
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
+				// We have to make an executive decision here: tables with non-zero
 				// length are assumed to be slices!
 				if L.ObjLen(idx) > 0 {
-					value = CopyTableToSlice(L, nil, idx)
+					value = copyTableToSlice(L, nil, idx, visited)
 				} else {
-					value = CopyTableToMap(L, nil, idx)
+					value = copyTableToMap(L, nil, idx, visited)
 				}
 			} else if L.IsNumber(idx) {
 				value = L.ToNumber(idx)

@@ -432,6 +432,145 @@ assert(tab2.bee == luar.null and tab2.dee == luar.null)
 	}
 }
 
+func TestCycleLuaToGo(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	{
+		var output []interface{}
+		L.DoString(`t = {17}; t[2] = t`)
+		L.GetGlobal("t")
+		v := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = v.([]interface{})
+		output_1 := output[1].([]interface{})
+		if &output_1[0] != &output[0] {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		var output []interface{}
+		L.DoString(`t = {17}; v = {t}; t[2] = v`)
+		L.GetGlobal("t")
+		v := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = v.([]interface{})
+		output_1 := output[1].([]interface{})
+		output_1_0 := output_1[0].([]interface{})
+		if &output_1_0[0] != &output[0] {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		var output []interface{}
+		L.DoString(`t = {17}; v = {t, t}; t[2] = v; t[3] = v; t[4] = t`)
+		L.GetGlobal("t")
+		v := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = v.([]interface{})
+		output_2 := output[2].([]interface{})
+		output_2_0 := output_2[0].([]interface{})
+		if &output_2_0[0] != &output[0] {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		var output map[string]interface{}
+		L.DoString(`t = {foo=17}; t["bar"] = t`)
+		L.GetGlobal("t")
+		m := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = m.(map[string]interface{})
+		output_1 := output["bar"].(map[string]interface{})
+		output["foo"] = 18
+		if output["foo"] != output_1["foo"] {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		var output map[string]interface{}
+		L.DoString(`t = {foo=17}; v = {baz=t}; t["bar"] = v`)
+		L.GetGlobal("t")
+		m := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = m.(map[string]interface{})
+		output_bar := output["bar"].(map[string]interface{})
+		output_bar_baz := output_bar["baz"].(map[string]interface{})
+		output["foo"] = 18
+		if output["foo"] != output_bar_baz["foo"] {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+}
+
+func TestCycleGoToLua(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	{
+		s := make([]interface{}, 2)
+		s[0] = 17
+		s[1] = s
+		GoToLua(L, nil, reflect.ValueOf(s), true)
+		output := L.ToPointer(-1)
+		L.RawGeti(-1, 2)
+		output_1 := L.ToPointer(-1)
+		L.SetTop(0)
+		if output != output_1 {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		s := make([]interface{}, 2)
+		s[0] = 17
+		s2 := make([]interface{}, 2)
+		s2[0] = 18
+		s2[1] = s
+		s[1] = s2
+		GoToLua(L, nil, reflect.ValueOf(s), true)
+		output := L.ToPointer(-1)
+		L.RawGeti(-1, 2)
+		L.RawGeti(-1, 2)
+		output_1_1 := L.ToPointer(-1)
+		L.SetTop(0)
+		if output != output_1_1 {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		s := map[string]interface{}{}
+		s["foo"] = 17
+		s["bar"] = s
+		GoToLua(L, nil, reflect.ValueOf(s), true)
+		output := L.ToPointer(-1)
+		L.GetField(-1, "bar")
+		output_bar := L.ToPointer(-1)
+		L.SetTop(0)
+		if output != output_bar {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		s := map[string]interface{}{}
+		s["foo"] = 17
+		s2 := map[string]interface{}{}
+		s2["bar"] = 18
+		s2["baz"] = s
+		s["qux"] = s2
+		GoToLua(L, nil, reflect.ValueOf(s), true)
+		output := L.ToPointer(-1)
+		L.GetField(-1, "qux")
+		L.GetField(-1, "baz")
+		output_qux_baz := L.ToPointer(-1)
+		L.SetTop(0)
+		if output != output_qux_baz {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+}
+
 func BenchmarkLuaToGoSliceInt(b *testing.B) {
 	L := Init()
 	defer L.Close()
