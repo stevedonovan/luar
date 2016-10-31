@@ -424,7 +424,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 			copyMapToTable(L, val, visited)
 		}
 	case reflect.Struct:
-		if !dontproxify {
+		if !dontproxify && valPtr.Kind() == reflect.Ptr {
 			if valPtr.CanInterface() {
 				switch v := valPtr.Interface().(type) {
 				case error:
