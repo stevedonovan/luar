@@ -300,10 +300,6 @@ func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
 	return nil
 }
 
-func isPointerToPrimitive(v reflect.Value) bool {
-	return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil
-}
-
 // visitor holds the index to the table in LUA_REGISTRYINDEX with all the tables
 // we ran across during a GoToLua conversion.
 type visitor struct {

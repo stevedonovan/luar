@@ -26,6 +26,10 @@ const (
 var proxyMap = map[*valueProxy]reflect.Value{}
 var proxymu = &sync.Mutex{}
 
+func isPointerToPrimitive(v reflect.Value) bool {
+	return v.Kind() == reflect.Ptr && v.Elem().IsValid() && types[int(v.Elem().Kind())] != nil
+}
+
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	rawptr := L.NewUserdata(unsafe.Sizeof(valueProxy{}))
 	ptr := (*valueProxy)(rawptr)
