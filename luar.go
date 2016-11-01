@@ -292,9 +292,9 @@ var types = []reflect.Type{
 	nil, // UnsafePointer
 }
 
-func isPrimitiveDerived(t reflect.Type, kind reflect.Kind) reflect.Type {
-	pt := types[int(kind)]
-	if pt != nil && pt != t {
+func isNewScalarType(v reflect.Value) reflect.Type {
+	pt := types[int(v.Kind())]
+	if pt != nil && pt != v.Type() {
 		return pt
 	}
 	return nil
@@ -346,9 +346,16 @@ func (v *visitor) close() {
 }
 
 // GoToLua pushes a Go value 'val' of type 't' on the Lua stack.
-// If we haven't been given a concrete type, use the type of the value
-// and unbox any interfaces.  You can force slices and maps to be copied
-// over as tables by setting 'dontproxify' to true.
+//
+// It unboxes interfaces.
+// 't' is only useful when a type cast is wanted.
+// If the type 't' is nil, it is inferred from 'val'.
+//
+// If not proxifying, pointers are followed recursively. Slices, structs and maps are copied over as tables.
+//
+// When proxifying, pointers are not followed.
+//
+// Predeclared scalar types are never proxified (dontproxify is ignored) as they have no methods.
 func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) {
 	v := newVisitor(L)
 	goToLua(L, t, val, dontproxify, v)
@@ -368,16 +375,15 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		val = reflect.ValueOf(val.Interface())
 		t = val.Type()
 	}
-	// Follow pointers. We save the pointer Value in case we proxify.
-	valPtr := val
-	for t.Kind() == reflect.Ptr {
+
+	// Follow pointers. We save the original pointer Value in case we proxify.
+	ptrVal := val
+	for val.Kind() == reflect.Ptr {
 		if visited.push(val) {
 			return
 		}
-		t = t.Elem()
 		val = val.Elem()
 	}
-	kind := t.Kind()
 
 	if (valPtr.Kind() == reflect.Ptr || valPtr.Kind() == reflect.Interface) && !valPtr.Elem().IsValid() {
 		L.PushNil()
@@ -385,12 +391,16 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 	}
 
 	// Underlying type is 'primitive'? Wrap it as a proxy!
-	if isPrimitiveDerived(t, kind) != nil {
-		makeValueProxy(L, val, cInterfaceMeta)
+	makeValueProxy(L, val, cInterfaceMeta)
+	if isNewScalarType(val) != nil {
 		return
 	}
 
-	switch kind {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	switch t.Kind() {
 	case reflect.Float64, reflect.Float32:
 		L.PushNumber(val.Float())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -403,7 +413,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		L.PushBoolean(val.Bool())
 	case reflect.Slice:
 		if !dontproxify {
-			makeValueProxy(L, valPtr, cSliceMeta)
+			makeValueProxy(L, val, cSliceMeta)
 		} else {
 			if visited.push(val) {
 				return
@@ -412,7 +422,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		}
 	case reflect.Map:
 		if !dontproxify {
-			makeValueProxy(L, valPtr, cMapMeta)
+			makeValueProxy(L, ptrVal, cMapMeta)
 		} else {
 			if visited.push(val) {
 				return
@@ -420,18 +430,18 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 			copyMapToTable(L, val, visited)
 		}
 	case reflect.Struct:
-		if !dontproxify && valPtr.Kind() == reflect.Ptr {
-			if valPtr.CanInterface() {
-				switch v := valPtr.Interface().(type) {
+		if !dontproxify && ptrVal.Kind() == reflect.Ptr {
+			if ptrVal.CanInterface() {
+				switch v := ptrVal.Interface().(type) {
 				case error:
 					L.PushString(v.Error())
 				case *LuaObject:
 					v.Push()
 				default:
-					makeValueProxy(L, valPtr, cStructMeta)
+					makeValueProxy(L, ptrVal, cStructMeta)
 				}
 			} else {
-				makeValueProxy(L, valPtr, cStructMeta)
+				makeValueProxy(L, val, cStructMeta)
 			}
 		} else {
 			if visited.push(val) {
@@ -445,7 +455,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		} else if val.IsNil() {
 			L.PushNil()
 		} else {
-			makeValueProxy(L, valPtr, cInterfaceMeta)
+			makeValueProxy(L, ptrVal, cInterfaceMeta)
 		}
 	}
 }

@@ -98,10 +98,9 @@ func proxyType(L *lua.State) int {
 
 func proxyRaw(L *lua.State) int {
 	v := unwrapProxyOrComplain(L, 1)
-	t := reflect.TypeOf(v)
-	tp := isPrimitiveDerived(t, t.Kind())
+	val := reflect.ValueOf(v)
+	tp := isNewScalarType(val)
 	if tp != nil {
-		val := reflect.ValueOf(v)
 		val = val.Convert(tp)
 		GoToLua(L, nil, val, false)
 	} else {
