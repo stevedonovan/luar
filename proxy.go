@@ -256,7 +256,7 @@ func slice__index(L *lua.State) int {
 			RaiseError(L, "slice get: index out of range")
 		}
 		ret := slice.Index(idx - 1)
-		GoToLua(L, ret.Type(), ret, false)
+		GoToLua(L, nil, ret, false)
 	} else {
 		RaiseError(L, "slice requires integer index")
 	}
@@ -285,7 +285,7 @@ func map__index(L *lua.State) int {
 	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
 	ret := val.MapIndex(key)
 	if ret.IsValid() {
-		GoToLua(L, ret.Type(), ret, false)
+		GoToLua(L, nil, ret, false)
 		return 1
 	}
 	return 0
@@ -370,9 +370,9 @@ func struct__index(L *lua.State) int {
 		callGoMethod(L, name, st)
 	} else {
 		if isPointerToPrimitive(ret) {
-			GoToLua(L, ret.Elem().Type(), ret.Elem(), false)
+			GoToLua(L, nil, ret.Elem(), false)
 		} else {
-			GoToLua(L, ret.Type(), ret, false)
+			GoToLua(L, nil, ret, false)
 		}
 	}
 	return 1

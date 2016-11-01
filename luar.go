@@ -345,11 +345,10 @@ func (v *visitor) close() {
 	v.L.Unref(lua.LUA_REGISTRYINDEX, v.index)
 }
 
-// GoToLua pushes a Go value 'val' of type 't' on the Lua stack.
+// GoToLua pushes a Go value 'val' on the Lua stack.
 //
 // It unboxes interfaces.
-// 't' is only useful when a type cast is wanted.
-// If the type 't' is nil, it is inferred from 'val'.
+// 't' is here for backward-compatibility and will be ignored.
 //
 // If not proxifying, pointers are followed recursively. Slices, structs and maps are copied over as tables.
 //
@@ -358,7 +357,7 @@ func (v *visitor) close() {
 // Predeclared scalar types are never proxified (dontproxify is ignored) as they have no methods.
 func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) {
 	v := newVisitor(L)
-	goToLua(L, t, val, dontproxify, v)
+	goToLua(L, nil, val, dontproxify, v)
 	v.close()
 }
 
@@ -367,13 +366,10 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		L.PushNil()
 		return
 	}
-	if t == nil {
-		t = val.Type()
-	}
-	// Unbox interfaces.
-	if t.Kind() == reflect.Interface && !val.IsNil() {
+
+	// Unbox interface.
+	if val.Kind() == reflect.Interface && !val.IsNil() {
 		val = reflect.ValueOf(val.Interface())
-		t = val.Type()
 	}
 
 	// Follow pointers if not proxifying. We save the original pointer Value in case we proxify.
@@ -402,11 +398,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		return
 	}
 
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-
-	switch t.Kind() {
+	switch val.Kind() {
 	case reflect.Float64, reflect.Float32:
 		L.PushNumber(val.Float())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -660,18 +652,6 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 	return value
 }
 
-func functionArgRetTypes(funt reflect.Type) (targs, tout []reflect.Type) {
-	targs = make([]reflect.Type, funt.NumIn())
-	for i := range targs {
-		targs[i] = funt.In(i)
-	}
-	tout = make([]reflect.Type, funt.NumOut())
-	for i := range tout {
-		tout[i] = funt.Out(i)
-	}
-	return
-}
-
 // elegant little 'cheat' suggested by Kyle Lemons,
 // avoiding the 'Call using zero Value argument' problem
 // http://play.golang.org/p/TZyOLzu2y-
@@ -712,7 +692,11 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 	}
 
 	funT := funV.Type()
-	tArgs, tOut := functionArgRetTypes(funT)
+	tArgs := make([]reflect.Type, funT.NumIn())
+	for i := range tArgs {
+		tArgs[i] = funT.In(i)
+	}
+
 	return func(L *lua.State) int {
 		var lastT reflect.Type
 		origTArgs := tArgs
@@ -739,8 +723,8 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 			tArgs = origTArgs
 		}
 		resV := callGo(L, funV, args)
-		for i, val := range resV {
-			GoToLua(L, tOut[i], val, false)
+		for _, val := range resV {
+			GoToLua(L, nil, val, false)
 		}
 		return len(resV)
 	}
@@ -774,8 +758,7 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 		L.GetGlobal("_G")
 	}
 	for name, val := range values {
-		t := reflect.TypeOf(val)
-		if t != nil && t.Kind() == reflect.Func {
+		if t := reflect.TypeOf(val); t != nil && t.Kind() == reflect.Func {
 			if convertFun {
 				L.PushGoFunction(GoLuaFunc(L, val))
 			} else {
@@ -783,7 +766,7 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 				L.PushGoFunction(lf)
 			}
 		} else {
-			GoToLua(L, t, reflect.ValueOf(val), false)
+			GoToLua(L, nil, reflect.ValueOf(val), false)
 		}
 		L.SetField(-2, name)
 	}
