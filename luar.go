@@ -376,7 +376,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		t = val.Type()
 	}
 
-	// Follow pointers. We save the original pointer Value in case we proxify.
+	// Follow pointers if not proxifying. We save the original pointer Value in case we proxify.
 	ptrVal := val
 	for val.Kind() == reflect.Ptr {
 		if visited.push(val) {
@@ -390,9 +390,15 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		return
 	}
 
-	// Proxify is nullv or new scalar type.
-	if (!dontproxify && isNewScalarType(val) != nil) || (val.CanInterface() && val.Interface() == nullv.Interface()) {
+	// As a special case, we always proxify nullv, the empty element for slices and maps.
+	if val.CanInterface() && val.Interface() == nullv.Interface() {
 		makeValueProxy(L, val, cInterfaceMeta)
+		return
+	}
+
+	// Proxify new scalar types.
+	if !dontproxify && isNewScalarType(val) != nil {
+		makeValueProxy(L, ptrVal, cInterfaceMeta)
 		return
 	}
 
@@ -413,7 +419,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		L.PushBoolean(val.Bool())
 	case reflect.Slice:
 		if !dontproxify {
-			makeValueProxy(L, val, cSliceMeta)
+			makeValueProxy(L, ptrVal, cSliceMeta)
 		} else {
 			if visited.push(val) {
 				return
@@ -441,7 +447,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 					makeValueProxy(L, ptrVal, cStructMeta)
 				}
 			} else {
-				makeValueProxy(L, val, cStructMeta)
+				makeValueProxy(L, ptrVal, cStructMeta)
 			}
 		} else {
 			if visited.push(val) {
