@@ -384,9 +384,6 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 	// Follow pointers if not proxifying. We save the original pointer Value in case we proxify.
 	ptrVal := val
 	for val.Kind() == reflect.Ptr {
-		if visited.push(val) {
-			return
-		}
 		val = val.Elem()
 	}
 
@@ -451,6 +448,10 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 				makeValueProxy(L, ptrVal, cStructMeta)
 			}
 		} else {
+			// Use ptrVal instead of val to detect cycles from the very first element.
+			if ptrVal.Kind() == reflect.Ptr && visited.push(ptrVal) {
+				return
+			}
 			copyStructToTable(L, ptrVal, visited)
 		}
 	default:
