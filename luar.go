@@ -390,9 +390,9 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		return
 	}
 
-	// Underlying type is 'primitive'? Wrap it as a proxy!
-	makeValueProxy(L, val, cInterfaceMeta)
-	if isNewScalarType(val) != nil {
+	// Proxify is nullv or new scalar type.
+	if (!dontproxify && isNewScalarType(val) != nil) || (val.CanInterface() && val.Interface() == nullv.Interface()) {
+		makeValueProxy(L, val, cInterfaceMeta)
 		return
 	}
 
