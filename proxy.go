@@ -366,7 +366,8 @@ func struct__index(L *lua.State) int {
 		est = st.Elem()
 	}
 	ret := est.FieldByName(name)
-	if !ret.IsValid() { // no such field, try for method?
+	if !ret.IsValid() || !ret.CanSet() {
+		// No such exported field, try for method.
 		callGoMethod(L, name, st)
 	} else {
 		if isPointerToPrimitive(ret) {

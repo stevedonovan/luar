@@ -55,9 +55,9 @@ Print(user.Name, user.Age)
 }
 
 type Ref struct {
-	index  int
-	number *int
-	title  *string
+	Index  int
+	Number *int
+	Title  *string
 }
 
 func newRef() *Ref {
@@ -65,14 +65,14 @@ func newRef() *Ref {
 	*n = 10
 	t := new(string)
 	*t = "foo"
-	return &Ref{index: 17, number: n, title: t}
+	return &Ref{Index: 17, Number: n, Title: t}
 }
 
 func Example_pointers() {
 	const test = `
 -- Pointers to structs and structs within pointers are automatically dereferenced.
 local t = newRef()
-Print(t.index, t.number, t.title)
+Print(t.Index, t.Number, t.Title)
 `
 
 	L := luar.Init()
