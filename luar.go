@@ -775,7 +775,7 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 	}
 	for name, val := range values {
 		t := reflect.TypeOf(val)
-		if t.Kind() == reflect.Func {
+		if t != nil && t.Kind() == reflect.Func {
 			if convertFun {
 				L.PushGoFunction(GoLuaFunc(L, val))
 			} else {
