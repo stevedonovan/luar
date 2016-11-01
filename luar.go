@@ -385,7 +385,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		val = val.Elem()
 	}
 
-	if (valPtr.Kind() == reflect.Ptr || valPtr.Kind() == reflect.Interface) && !valPtr.Elem().IsValid() {
+	if !val.IsValid() {
 		L.PushNil()
 		return
 	}
