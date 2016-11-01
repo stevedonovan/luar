@@ -1040,21 +1040,21 @@ func makeSlice(L *lua.State) int {
 const setup = `
 local opairs = pairs
 function pairs(t)
-    local mt = getmetatable(t)
-    if mt and mt.__pairs then
-        return mt.__pairs(t)
-    else
-        return opairs(t)
-    end
+	local mt = getmetatable(t)
+	if mt and mt.__pairs then
+		return mt.__pairs(t)
+	else
+		return opairs(t)
+	end
 end
 local oipairs = ipairs
 function ipairs(t)
-    local mt = getmetatable(t)
-    if mt and mt.__ipairs then
-        return mt.__ipairs(t)
-    else
-        return oipairs(t)
-    end
+	local mt = getmetatable(t)
+	if mt and mt.__ipairs then
+		return mt.__ipairs(t)
+	else
+		return oipairs(t)
+	end
 end
 `
 
