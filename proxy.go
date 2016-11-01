@@ -257,6 +257,9 @@ func slice__index(L *lua.State) int {
 		}
 		ret := slice.Index(idx - 1)
 		GoToLua(L, nil, ret, false)
+	} else if L.IsString(2) {
+		name := L.ToString(2)
+		callGoMethod(L, name, slice)
 	} else {
 		RaiseError(L, "slice requires integer index")
 	}
@@ -286,6 +289,33 @@ func map__index(L *lua.State) int {
 	ret := val.MapIndex(key)
 	if ret.IsValid() {
 		GoToLua(L, nil, ret, false)
+		return 1
+	} else if key.Kind() == reflect.String {
+		st := val
+		name := key.String()
+
+		// From 'callGoMethod':
+		ret := st.MethodByName(name)
+		if !ret.IsValid() {
+			T := st.Type()
+			// Could not resolve this method. Perhaps it's defined on the pointer?
+			if T.Kind() != reflect.Ptr {
+				if st.CanAddr() { // easy if we can get a pointer directly
+					st = st.Addr()
+				} else { // otherwise have to create and initialize one...
+					VP := reflect.New(T)
+					VP.Elem().Set(st)
+					st = VP
+				}
+			}
+			ret = st.MethodByName(name)
+			// Unlike 'callGoMethod', do not panic.
+			if !ret.IsValid() {
+				L.PushNil()
+				return 1
+			}
+		}
+		L.PushGoFunction(GoLuaFunc(L, ret))
 		return 1
 	}
 	return 0

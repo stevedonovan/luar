@@ -255,6 +255,62 @@ f.Close()`
 	}
 }
 
+type mySlice []int
+
+func (m *mySlice) Foo() int {
+	return len(*m)
+}
+
+func TestSliceMethod(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	a := mySlice{17, 170}
+
+	Register(L, "", Map{
+		"a": a,
+	})
+
+	const code = `
+assert(a.Foo() == 2)
+assert(a[1] == 17)
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+
+}
+
+type myMap map[string]int
+
+func (m *myMap) Foo() int {
+	return len(*m)
+}
+
+func TestMapMethod(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	a := myMap{"foo": 17, "bar": 170}
+
+	Register(L, "", Map{
+		"a": a,
+	})
+
+	const code = `
+assert(a.Foo() == 2)
+assert(a.foo == 17)
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+
+}
+
 func TestLuaCallSlice(t *testing.T) {
 	L := Init()
 	defer L.Close()
