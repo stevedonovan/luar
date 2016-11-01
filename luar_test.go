@@ -200,6 +200,25 @@ assert(luar.type(it).String() == "*luar.person")
 	}
 }
 
+func TestStructCopy(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	a := person{Name: "foo", Age: 17}
+	GoToLua(L, nil, reflect.ValueOf(a), true)
+	L.SetGlobal("a")
+
+	const code = `
+assert(a.Name =='foo')
+assert(a.Age ==17)
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestInterfaceAccess(t *testing.T) {
 	const code = `
 -- Calling methods on an interface.
@@ -502,6 +521,11 @@ func TestCycleLuaToGo(t *testing.T) {
 	}
 }
 
+type list struct {
+	V    int
+	Next *list
+}
+
 func TestCycleGoToLua(t *testing.T) {
 	L := Init()
 	defer L.Close()
@@ -569,6 +593,45 @@ func TestCycleGoToLua(t *testing.T) {
 			t.Errorf("address of repeated element differs")
 		}
 	}
+
+	{
+		l1 := &list{V: 17}
+		l2 := &list{V: 18}
+		l1.Next = l2
+		l2.Next = l1
+		GoToLua(L, nil, reflect.ValueOf(l1), true)
+		output_l1 := L.ToPointer(-1)
+		L.GetField(-1, "Next")
+		L.GetField(-1, "Next")
+		output_l1_l2_l1 := L.ToPointer(-1)
+		L.SetTop(0)
+		if output_l1 != output_l1_l2_l1 {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
+	{
+		l1 := &list{V: 17}
+		l2 := &list{V: 18}
+		l1.Next = l2
+		l2.Next = l1
+		CopyStructToTable(L, reflect.ValueOf(l1))
+		// Note that root table is only repeated if we call CopyStructToTable on the
+		// pointer.
+		output_l1 := L.ToPointer(-1)
+		L.GetField(-1, "Next")
+		output_l1_l2 := L.ToPointer(-1)
+		L.GetField(-1, "Next")
+		output_l1_l2_l1 := L.ToPointer(-1)
+		L.GetField(-1, "Next")
+		output_l1_l2_l1_l2 := L.ToPointer(-1)
+
+		L.SetTop(0)
+		if output_l1 != output_l1_l2_l1 || output_l1_l2 != output_l1_l2_l1_l2 {
+			t.Errorf("address of repeated element differs")
+		}
+	}
+
 }
 
 func BenchmarkLuaToGoSliceInt(b *testing.B) {

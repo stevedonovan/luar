@@ -204,10 +204,19 @@ func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 }
 
 func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int {
+	// If 'vstruct' is a pointer to struct, use the pointer to mark as visited.
+	ref := vstruct
+	for vstruct.Kind() == reflect.Ptr {
+		vstruct = vstruct.Elem()
+	}
+
 	if vstruct.IsValid() && vstruct.Type().Kind() == reflect.Struct {
 		n := vstruct.NumField()
 		L.CreateTable(n, 0)
-		visited.mark(vstruct)
+		if ref.Kind() == reflect.Ptr {
+			visited.mark(ref)
+		}
+
 		for i := 0; i < n; i++ {
 			st := vstruct.Type()
 			field := st.Field(i)
@@ -224,7 +233,7 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int
 		return 1
 	}
 	L.PushNil()
-	L.PushString("not a struct!")
+	L.PushString("not a struct")
 	return 2
 }
 
@@ -442,10 +451,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 				makeValueProxy(L, ptrVal, cStructMeta)
 			}
 		} else {
-			if visited.push(val) {
-				return
-			}
-			copyStructToTable(L, val, visited)
+			copyStructToTable(L, ptrVal, visited)
 		}
 	default:
 		if v, ok := val.Interface().(error); ok {
