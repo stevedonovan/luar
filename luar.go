@@ -62,8 +62,12 @@ func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr
 	n := int(L.ObjLen(idx))
 	slice := reflect.MakeSlice(t, n, n)
 
+	// Do not add empty slices to the list of visited elements.
+	// The empty Lua table is a single instance object and gets re-used across maps, slices and others.
 	ptr := L.ToPointer(idx)
-	visited[ptr] = slice.Interface()
+	if n > 0 {
+		visited[ptr] = slice.Interface()
+	}
 
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
@@ -75,6 +79,18 @@ func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr
 		L.Pop(1)
 	}
 	return slice.Interface()
+}
+
+func luaIsEmpty(L *lua.State, idx int) bool {
+	L.PushNil()
+	if idx < 0 {
+		idx--
+	}
+	if L.Next(idx) != 0 {
+		L.Pop(2)
+		return false
+	}
+	return true
 }
 
 // CopyTableToMap returns the Lua table at 'idx' as a copied Go map.
@@ -90,8 +106,11 @@ func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]i
 	te, tk := t.Elem(), t.Key()
 	m := reflect.MakeMap(t)
 
+	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
-	visited[ptr] = m.Interface()
+	if !luaIsEmpty(L, idx) {
+		visited[ptr] = m.Interface()
+	}
 
 	L.PushNil()
 	if idx < 0 {
@@ -125,11 +144,15 @@ func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintpt
 	s := reflect.New(t) // T -> *T
 	ref := s.Elem()
 
+	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
-	if wasPtr {
-		visited[ptr] = s.Interface()
+	if !luaIsEmpty(L, idx) {
+		if wasPtr {
+			visited[ptr] = s.Interface()
+		} else {
+			visited[ptr] = s.Elem().Interface()
+		}
 	}
-	visited[ptr] = s.Elem().Interface()
 
 	// Associate Lua keys with Go fields: tags have priority over matching field
 	// name.
