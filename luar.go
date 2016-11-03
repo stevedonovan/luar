@@ -54,21 +54,40 @@ func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	return copyTableToSlice(L, t, idx, map[uintptr]interface{}{})
 }
 
+// Also for arrays.
 func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
 	if t == nil {
 		t = tslice
 	}
-	te := t.Elem()
+
+	ref := t
+	// There is probably no point at accepting more than one level of dreference.
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
 	n := int(L.ObjLen(idx))
-	slice := reflect.MakeSlice(t, n, n)
+
+	var slice reflect.Value
+	if t.Kind() == reflect.Array {
+		slice = reflect.New(t)
+		slice = slice.Elem()
+	} else {
+		slice = reflect.MakeSlice(t, n, n)
+	}
 
 	// Do not add empty slices to the list of visited elements.
 	// The empty Lua table is a single instance object and gets re-used across maps, slices and others.
-	ptr := L.ToPointer(idx)
 	if n > 0 {
-		visited[ptr] = slice.Interface()
+		ptr := L.ToPointer(idx)
+		if ref.Kind() == reflect.Ptr {
+			visited[ptr] = slice.Addr().Interface()
+		} else {
+			visited[ptr] = slice.Interface()
+		}
 	}
 
+	te := t.Elem()
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
 		val := reflect.ValueOf(luaToGo(L, te, -1, visited))
@@ -77,6 +96,10 @@ func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr
 		}
 		slice.Index(i - 1).Set(val)
 		L.Pop(1)
+	}
+
+	if ref.Kind() == reflect.Ptr {
+		return slice.Addr().Interface()
 	}
 	return slice.Interface()
 }
@@ -188,19 +211,40 @@ func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintpt
 }
 
 // CopySliceToTable copies a Go slice to a Lua table.
-// 'nil' in both slices and structs are represented as 'luar.null'. Defines
-// 'luar.slice2table'.
+// 'nil' is represented as 'luar.null'.
+// Defines 'luar.slice2table'.
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
 	return copySliceToTable(L, vslice, v)
 }
 
+// CopyArrayToTable copies a Go array to a Lua table.
+// 'nil' is represented as 'luar.null'.
+// Defines 'luar.array2table'.
+func CopyArrayToTable(L *lua.State, v reflect.Value) int {
+	visitor := newVisitor(L)
+	defer visitor.close()
+	return copySliceToTable(L, v, visitor)
+}
+
+// Also for arrays.
 func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
-	if vslice.IsValid() && vslice.Type().Kind() == reflect.Slice {
+	ref := vslice
+	for vslice.Kind() == reflect.Ptr {
+		// For arrays.
+		vslice = vslice.Elem()
+	}
+
+	if vslice.IsValid() && (vslice.Kind() == reflect.Slice || vslice.Kind() == reflect.Array) {
 		n := vslice.Len()
 		L.CreateTable(n, 0)
-		visited.mark(vslice)
+		if vslice.Kind() == reflect.Slice {
+			visited.mark(vslice)
+		} else if ref.Kind() == reflect.Ptr {
+			visited.mark(ref)
+		}
+
 		for i := 0; i < n; i++ {
 			L.PushInteger(int64(i + 1))
 			v := vslice.Index(i)
@@ -213,13 +257,14 @@ func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 		return 1
 	}
 	L.PushNil()
-	L.PushString("not a slice!")
+	L.PushString("not a slice/array")
 	return 2
 }
 
 // CopyStructToTable copies a Go struct to a Lua table.
-// 'nil' in both slices and structs are represented as 'luar.null'. Defines
-// 'luar.struct2table'. Use the "lua" tag to set field names.
+// 'nil' is represented as 'luar.null'.
+// Defines 'luar.struct2table'.
+// Use the "lua" tag to set field names.
 func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -384,7 +429,8 @@ func (v *visitor) close() {
 //
 // If not proxifying, pointers are followed recursively. Slices, structs and maps are copied over as tables.
 //
-// When proxifying, pointers are not followed.
+// When proxifying, pointers are preserved. Structs and arrays need to be
+// passed as pointers to be proxified, otherwise they will be copied as tables.
 //
 // Predeclared scalar types are never proxified (dontproxify is ignored) as they have no methods.
 func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) {
@@ -438,6 +484,17 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		L.PushString(val.String())
 	case reflect.Bool:
 		L.PushBoolean(val.Bool())
+	case reflect.Array:
+		// It needs be a pointer to be a proxy, otherwise values won't be settable.
+		if !dontproxify && ptrVal.Kind() == reflect.Ptr {
+			makeValueProxy(L, ptrVal, cSliceMeta)
+		} else {
+			// See the case of struct.
+			if ptrVal.Kind() == reflect.Ptr && visited.push(ptrVal) {
+				return
+			}
+			copySliceToTable(L, ptrVal, visited)
+		}
 	case reflect.Slice:
 		if !dontproxify {
 			makeValueProxy(L, ptrVal, cSliceMeta)
@@ -471,7 +528,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 				makeValueProxy(L, ptrVal, cStructMeta)
 			}
 		} else {
-			// Use ptrVal instead of val to detect cycles from the very first element.
+			// Use ptrVal instead of val to detect cycles from the very first element, if a pointer.
 			if ptrVal.Kind() == reflect.Ptr && visited.push(ptrVal) {
 				return
 			}
@@ -619,6 +676,16 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 			return NewLuaObject(L, idx)
 		}
 		switch kind {
+		case reflect.Array:
+			if istable {
+				ptr := L.ToPointer(idx)
+				if val, ok := visited[ptr]; ok {
+					return val
+				}
+				value = copyTableToSlice(L, t, idx, visited)
+			} else {
+				value = unwrapProxyOrComplain(L, idx)
+			}
 		case reflect.Slice:
 			// if we get a table, then copy its values to a new slice
 			if istable {
@@ -1033,6 +1100,10 @@ func slice2table(L *lua.State) int {
 	return CopySliceToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
 }
 
+func array2table(L *lua.State) int {
+	return CopyArrayToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
+}
+
 func struct2table(L *lua.State) int {
 	return CopyStructToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
 }
@@ -1076,7 +1147,7 @@ end
 // conversions however.
 //
 // It populates the 'luar' table with the following functions:
-// 	'map2table', 'slice2table', 'struct2table', 'map', 'slice', 'type', 'sub', 'append', 'raw',
+// 	'map2table', 'slice2table', 'array2table', 'struct2table', 'map', 'slice', 'type', 'sub', 'append', 'raw',
 // and values:
 //  'null'.
 //
@@ -1091,6 +1162,7 @@ func Init() *lua.State {
 		// Functions.
 		"map2table":    map2table,
 		"slice2table":  slice2table,
+		"array2table":  array2table,
 		"struct2table": struct2table,
 		"map":          makeMap,
 		"slice":        makeSlice,

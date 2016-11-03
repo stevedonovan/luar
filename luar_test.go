@@ -94,6 +94,85 @@ assert(IsNilPointer(nil))`},
 	}
 }
 
+func TestArray(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	a := [2]int{17, 18}
+
+	Register(L, "", Map{
+		"a": a,
+		"b": &a,
+	})
+
+	const code_a = `
+assert(#a == 2)
+assert(type(a) == 'table')
+assert(a[1] == 17)
+assert(a[2] == 18)
+a[2] = 180
+`
+	const code_b = `
+assert(#b == 2)
+assert(type(b) == 'userdata')
+assert(b[1] == 17)
+assert(b[2] == 18)
+for _, v in ipairs(b) do
+assert(b[1] == 17)
+break
+end
+b[1] = 170
+`
+
+	err := L.DoString(code_a)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if a[0] != 17 || a[1] != 18 {
+		t.Error("table copy has modified its source")
+	}
+
+	err = L.DoString(code_b)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if a[0] != 170 || a[1] != 18 {
+		t.Error("table proxy has not modified its source")
+	}
+
+	{
+		var output [2]int
+		L.GetGlobal("a")
+		res := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = res.([2]int)
+		if output[0] != 17 || output[1] != 180 {
+			t.Error("table conversion produced unexpected values", output)
+		}
+	}
+
+	{
+		var output *[2]int
+		L.GetGlobal("a")
+		res := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = res.(*[2]int)
+		if output[0] != 17 || output[1] != 180 {
+			t.Error("table conversion produced unexpected values", output)
+		}
+	}
+
+	{
+		var output *[2]int
+		L.GetGlobal("b")
+		res := LuaToGo(L, reflect.TypeOf(output), -1)
+		output = res.(*[2]int)
+		if output[0] != 170 || output[1] != 18 {
+			t.Error("table conversion produced unexpected values", output)
+		}
+	}
+}
+
 func TestNamespace(t *testing.T) {
 	keys := func(m map[string]interface{}) (res []string) {
 		res = make([]string, 0)
@@ -688,6 +767,26 @@ func TestCycleGoToLua(t *testing.T) {
 		}
 	}
 
+	{
+		a := [2]interface{}{}
+		a[0] = 17
+		a[1] = &a
+
+		// Pass reference so that first element can be part of the cycle.
+		Register(L, "", Map{"a": &a})
+
+		const code = `
+assert(#a == 2)
+assert(a[1] == 17)
+a[1] = 18
+assert(a[1] == 18)
+assert(a[2][1] == 18)
+`
+		err := L.DoString(code)
+		if err != nil {
+			t.Error(err)
+		}
+	}
 }
 
 func BenchmarkLuaToGoSliceInt(b *testing.B) {

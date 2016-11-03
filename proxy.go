@@ -250,10 +250,14 @@ func sliceAppend(L *lua.State) int {
 
 func slice__index(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
+	for slice.Kind() == reflect.Ptr {
+		// For arrays.
+		slice = slice.Elem()
+	}
 	if L.IsNumber(2) {
 		idx := L.ToInteger(2)
 		if idx < 1 || idx > slice.Len() {
-			RaiseError(L, "slice get: index out of range")
+			RaiseError(L, "slice/array get: index out of range")
 		}
 		ret := slice.Index(idx - 1)
 		GoToLua(L, nil, ret, false)
@@ -261,17 +265,22 @@ func slice__index(L *lua.State) int {
 		name := L.ToString(2)
 		callGoMethod(L, name, slice)
 	} else {
-		RaiseError(L, "slice requires integer index")
+		RaiseError(L, "slice/array requires integer index")
 	}
 	return 1
 }
 
 func slice__newindex(L *lua.State) int {
 	slice, t := valueOfProxy(L, 1)
+	for slice.Kind() == reflect.Ptr {
+		// For arrays.
+		slice = slice.Elem()
+		t = t.Elem()
+	}
 	idx := L.ToInteger(2)
 	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
 	if idx < 1 || idx > slice.Len() {
-		RaiseError(L, "slice set: index out of range")
+		RaiseError(L, "slice/array set: index out of range")
 	}
 	slice.Index(idx - 1).Set(val)
 	return 0
@@ -279,6 +288,10 @@ func slice__newindex(L *lua.State) int {
 
 func slicemap__len(L *lua.State) int {
 	val, _ := valueOfProxy(L, 1)
+	for val.Kind() == reflect.Ptr {
+		// For arrays.
+		val = val.Elem()
+	}
 	L.PushInteger(int64(val.Len()))
 	return 1
 }
@@ -351,6 +364,9 @@ func map__pairs(L *lua.State) int {
 
 func slice__ipairs(L *lua.State) int {
 	s, _ := valueOfProxy(L, 1)
+	for s.Kind() == reflect.Ptr {
+		s = s.Elem()
+	}
 	n := s.Len()
 	idx := -1
 	iter := func(L *lua.State) int {
