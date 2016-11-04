@@ -2,6 +2,7 @@ package luar
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -16,6 +17,8 @@ type valueProxy struct {
 }
 
 const (
+	cNumberMeta    = "numberMT"
+	cStringMeta    = "stringMT"
 	cSliceMeta     = "sliceMT"
 	cMapMeta       = "mapMT"
 	cStructMeta    = "structMT"
@@ -48,6 +51,22 @@ func proxy__gc(L *lua.State) int {
 	delete(proxyMap, vp)
 	proxymu.Unlock()
 	return 0
+}
+
+func valueOnStack(L *lua.State, idx int) (reflect.Value, reflect.Type) {
+	if isValueProxy(L, idx) {
+		return valueOfProxy(L, idx)
+	}
+
+	switch L.Type(idx) {
+	case lua.LUA_TNUMBER:
+		v := L.ToNumber(idx)
+		return reflect.ValueOf(v), reflect.TypeOf(v)
+	case lua.LUA_TSTRING:
+		v := L.ToString(idx)
+		return reflect.ValueOf(v), reflect.TypeOf(v)
+	}
+	return reflect.Value{}, nil
 }
 
 func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
@@ -182,6 +201,25 @@ func InitProxies(L *lua.State) {
 		L.SetField(-2, "luago.value")
 		L.Pop(1)
 	}
+
+	L.NewMetaTable(cNumberMeta)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__lt", number__lt)
+	L.SetMetaMethod("__add", number__add)
+	L.SetMetaMethod("__sub", number__sub)
+	L.SetMetaMethod("__mul", number__mul)
+	L.SetMetaMethod("__div", number__div)
+	L.SetMetaMethod("__mod", number__mod)
+	L.SetMetaMethod("__pow", number__pow)
+	flagValue()
+
+	L.NewMetaTable(cStringMeta)
+	// TODO: String indexing?
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__len", string__len)
+	L.SetMetaMethod("__lt", string__lt)
+	L.SetMetaMethod("__concat", string__concat)
+	flagValue()
 
 	L.NewMetaTable(cSliceMeta)
 	L.SetMetaMethod("__index", slice__index)
@@ -486,4 +524,242 @@ func struct__newindex(L *lua.State) int {
 		field.Set(val)
 	}
 	return 0
+}
+
+// pushNumberValue pushes the number resulting from an arithmetic operation.
+// The type of the result depends on the type of the operands.
+// Rules:
+// - If operands are of the same type, preserve type.
+// - If one type is predeclared, preserve the new type.
+// - If both type are predeclared, convert to float64.
+func pushNumberValue(L *lua.State, i interface{}, t1, t2 reflect.Type) {
+	v := reflect.ValueOf(i)
+	if t1 == t2 || isNewScalar(t1) == nil || isNewScalar(t2) == nil {
+		if isNewScalar(t1) != nil {
+			makeValueProxy(L, v.Convert(t2), cNumberMeta)
+		} else {
+			makeValueProxy(L, v.Convert(t1), cNumberMeta)
+		}
+	} else {
+		L.PushNumber(valueToFloat(v))
+	}
+}
+
+// Shorthand for kind-switches.
+func numericKind(v reflect.Value) reflect.Kind {
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return reflect.Int64
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return reflect.Uint64
+	case reflect.Float32, reflect.Float64:
+		return reflect.Float64
+	default:
+		return reflect.Invalid
+	}
+}
+
+func valueToFloat(v reflect.Value) float64 {
+	switch numericKind(v) {
+	case reflect.Int64:
+		return float64(v.Int())
+	case reflect.Uint64:
+		return float64(v.Uint())
+	}
+	return v.Float()
+}
+
+func valueToString(L *lua.State, v reflect.Value) string {
+	if numericKind(v) != reflect.Invalid {
+		switch numericKind(v) {
+		case reflect.Uint64:
+			return fmt.Sprintf("%v", v.Uint())
+		case reflect.Int64:
+			return fmt.Sprintf("%v", v.Int())
+		case reflect.Float64:
+			return fmt.Sprintf("%v", v.Float())
+		}
+	}
+	if v.Kind() == reflect.String {
+		return v.String()
+	}
+
+	RaiseError(L, "cannot convert to string")
+	return ""
+}
+
+// commonKind returns the kind to which v1 and v2 can be converted with the
+// least information loss.
+func commonKind(v1, v2 reflect.Value) reflect.Kind {
+	k1 := numericKind(v1)
+	k2 := numericKind(v2)
+	if k1 == k2 && (k1 == reflect.Uint64 || k1 == reflect.Int64) {
+		return k1
+	}
+	return reflect.Float64
+}
+
+func number__lt(L *lua.State) int {
+	v1, _ := valueOnStack(L, 1)
+	v2, _ := valueOnStack(L, 2)
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		L.PushBoolean(v1.Uint() < v2.Uint())
+	case reflect.Int64:
+		L.PushBoolean(v1.Int() < v2.Int())
+	case reflect.Float64:
+		L.PushBoolean(valueToFloat(v1) < valueToFloat(v1))
+	}
+	return 1
+}
+
+func number__add(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	var result interface{}
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		result = v1.Uint() + v2.Uint()
+	case reflect.Int64:
+		result = v1.Int() + v2.Int()
+	case reflect.Float64:
+		result = valueToFloat(v1) + valueToFloat(v2)
+	}
+	pushNumberValue(L, result, t1, t2)
+	return 1
+}
+
+func number__sub(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	var result interface{}
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		result = v1.Uint() - v2.Uint()
+	case reflect.Int64:
+		result = v1.Int() - v2.Int()
+	case reflect.Float64:
+		result = valueToFloat(v1) - valueToFloat(v2)
+	}
+	pushNumberValue(L, result, t1, t2)
+	return 1
+}
+
+func number__mul(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	var result interface{}
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		result = v1.Uint() * v2.Uint()
+	case reflect.Int64:
+		result = v1.Int() * v2.Int()
+	case reflect.Float64:
+		result = valueToFloat(v1) * valueToFloat(v2)
+	}
+	pushNumberValue(L, result, t1, t2)
+	return 1
+}
+
+func number__div(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	var result interface{}
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		result = v1.Uint() / v2.Uint()
+	case reflect.Int64:
+		result = v1.Int() / v2.Int()
+	case reflect.Float64:
+		result = valueToFloat(v1) / valueToFloat(v2)
+	}
+	pushNumberValue(L, result, t1, t2)
+	return 1
+}
+
+func number__mod(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	var result interface{}
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		result = v1.Uint() % v2.Uint()
+	case reflect.Int64:
+		result = v1.Int() % v2.Int()
+	case reflect.Float64:
+		result = math.Mod(valueToFloat(v1), valueToFloat(v2))
+	}
+	pushNumberValue(L, result, t1, t2)
+	return 1
+}
+
+func number__pow(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	var result interface{}
+	switch commonKind(v1, v2) {
+	case reflect.Uint64:
+		result = math.Pow(float64(v1.Uint()), float64(v2.Uint()))
+	case reflect.Int64:
+		result = math.Pow(float64(v1.Int()), float64(v2.Int()))
+	case reflect.Float64:
+		result = math.Pow(valueToFloat(v1), valueToFloat(v2))
+	}
+	pushNumberValue(L, result, t1, t2)
+	return 1
+}
+
+func number__unm(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	var result interface{}
+	switch numericKind(v1) {
+	case reflect.Uint64:
+		result = -v1.Uint()
+	case reflect.Int64:
+		result = -v1.Int()
+	case reflect.Float64:
+		result = -v1.Float()
+	}
+	v := reflect.ValueOf(result)
+	if isNewScalar(t1) != nil {
+		makeValueProxy(L, v1, cNumberMeta)
+	} else {
+		L.PushNumber(v.Float())
+	}
+	return 1
+}
+
+func string__len(L *lua.State) int {
+	v1, _ := valueOnStack(L, 1)
+	L.PushInteger(int64(v1.Len()))
+	return 1
+}
+
+func string__lt(L *lua.State) int {
+	v1, _ := valueOnStack(L, 1)
+	v2, _ := valueOnStack(L, 2)
+	L.PushBoolean(v1.String() < v2.String())
+	return 1
+}
+
+func string__concat(L *lua.State) int {
+	v1, t1 := valueOnStack(L, 1)
+	v2, t2 := valueOnStack(L, 2)
+	s1 := valueToString(L, v1)
+	s2 := valueToString(L, v2)
+
+	result := s1 + s2
+
+	if t1 == t2 || isNewScalar(t1) == nil || isNewScalar(t2) == nil {
+		v := reflect.ValueOf(result)
+		if isNewScalar(t1) != nil {
+			makeValueProxy(L, v.Convert(t2), cNumberMeta)
+		} else {
+			makeValueProxy(L, v.Convert(t1), cNumberMeta)
+		}
+	} else {
+		L.PushString(result)
+	}
+
+	return 1
 }
