@@ -188,12 +188,14 @@ func InitProxies(L *lua.State) {
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__ipairs", slice__ipairs)
+	L.SetMetaMethod("__pairs", slice__ipairs)
 	flagValue()
 
 	L.NewMetaTable(cMapMeta)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
+	L.SetMetaMethod("__ipairs", map__ipairs)
 	L.SetMetaMethod("__pairs", map__pairs)
 	flagValue()
 
@@ -360,6 +362,26 @@ func map__pairs(L *lua.State) int {
 	}
 	L.PushGoFunction(iter)
 	return 1
+}
+
+func map__ipairs(L *lua.State) int {
+    m, _ := valueOfProxy(L, 1)
+    keys := m.MapKeys()
+    idx := -1
+    n := m.Len()
+    iter := func(L *lua.State) int {
+        idx++
+        if idx == n {
+            L.PushNil()
+            return 1
+        }
+        GoToLua(L, nil, reflect.ValueOf(idx+1), false) // report as 1-based index
+        val := m.MapIndex(keys[idx])
+        GoToLua(L, nil, val, false)
+        return 2
+    }
+    L.PushGoFunction(iter)
+    return 1
 }
 
 func slice__ipairs(L *lua.State) int {
