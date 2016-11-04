@@ -160,6 +160,9 @@ func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 }
 
 func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
+	if t == nil {
+		RaiseError(L, "type argument must be non-nill")
+	}
 	wasPtr := t.Kind() == reflect.Ptr
 	if wasPtr {
 		t = t.Elem()

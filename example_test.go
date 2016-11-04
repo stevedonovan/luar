@@ -163,6 +163,51 @@ func ExampleCopyTableToMap() {
 	// true
 }
 
+func ExampleCopyTableToStruct() {
+	L := luar.Init()
+	defer L.Close()
+
+	err := L.DoString(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// There should be a table on the Lua stack.
+	if !L.IsTable(-1) {
+		log.Fatal("no table on stack")
+	}
+
+	type conf struct {
+		Baggins bool   `lua:"baggins"`
+		Age     int    `lua:"age"`
+		Name    string `lua:"name"`
+		Marked  []int  `lua:"marked"`
+		Options struct {
+			Leave  bool            `lua:"leave"`
+			cancel string          // Ingored since it is unexported.
+			Tags   map[string]bool `lua:"tags"`
+		} `lua:"options"`
+	}
+
+	var s conf
+	v := luar.CopyTableToStruct(L, reflect.TypeOf(s), -1)
+	s = v.(conf)
+
+	fmt.Println(s.Baggins)
+	fmt.Println(s.Age)
+	fmt.Println(s.Name)
+	fmt.Println(s.Marked)
+	fmt.Println(s.Options.Leave)
+	fmt.Println(s.Options.Tags)
+	// Output:
+	// true
+	// 24
+	// dumbo
+	// [1 2]
+	// true
+	// map[strong:true foolish:true]
+}
+
 func ExampleGoToLua() {
 	// The luar's Init function is only required for proxy use.
 	L := lua.NewState()
