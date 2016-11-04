@@ -473,7 +473,71 @@ func (a A) String() string {
 	return strconv.Itoa(int(a))
 }
 
+func (a A) FooA() string {
+	return "FooA"
+}
+
 type B int
+
+func NewB(i int) B {
+	return B(i)
+}
+
+func (b B) FooB() string {
+	return "FooB"
+}
+
+type C string
+
+func NewC(s string) C {
+	return C(s)
+}
+
+func (c C) FooC() string {
+	return "FooC"
+}
+
+func TestArithNewTypes(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	i := A(17)
+	j := B(18)
+	s := C("foo")
+
+	Register(L, "", Map{
+		"i":    i,
+		"j":    j,
+		"s":    s,
+		"newA": NewA,
+		"newB": NewB,
+		"newC": NewC,
+	})
+
+	const code = `
+f = i + j
+assert(f == 35)
+
+i2 = i+i
+assert(i2 == newA(34))
+
+i3 = i+10
+assert(i3 == newA(27))
+
+j2 = j + j
+assert(j2 == newB(36))
+
+s = s .. "bar"
+assert(#s == 6)
+assert(s == newC("foobar"))
+assert(s.FooC() == "FooC")
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}
 
 func TestTypeDiscipline(t *testing.T) {
 	tdt := []struct{ desc, code string }{
@@ -481,10 +545,9 @@ func TestTypeDiscipline(t *testing.T) {
 		{"get underlying primitive value", `assert(luar.raw(a) == 5)`},
 		{"arith ops on derived types", `assert(new_a(8) == new_a(8))
 assert(new_a(5) ~= new_a(6))
--- TODO: Arith ops on userdata does not work, why?
--- assert(new_a(5) < new_a(8))
--- assert(new_a(8) > new_a(5))
--- assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))`},
+assert(new_a(5) < new_a(8))
+assert(new_a(8) > new_a(5))
+assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))`},
 	}
 
 	L := Init()
