@@ -546,6 +546,37 @@ assert(m.Test == nil)`
 	}
 }
 
+func TestMapIpair(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	m := map[interface{}]string{
+		-1:  "ko",
+		0:   "ko",
+		1:   "foo",
+		2:   "bar",
+		"3": "baz",
+	}
+
+	Register(L, "", Map{"m": m})
+
+	const code = `
+t = {}
+for k, v in ipairs(m) do
+t[k] = v
+end
+assert(t[0] == nil)
+assert(t[1] == "foo")
+assert(t[2] == "bar")
+assert(t[3] == nil)
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 // 'nil' in Go slices and maps is represented by luar.null.
 func TestTypeConversion(t *testing.T) {
 	L := Init()

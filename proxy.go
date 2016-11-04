@@ -188,12 +188,14 @@ func InitProxies(L *lua.State) {
 	L.SetMetaMethod("__newindex", slice__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
 	L.SetMetaMethod("__ipairs", slice__ipairs)
+	L.SetMetaMethod("__pairs", slice__ipairs)
 	flagValue()
 
 	L.NewMetaTable(cMapMeta)
 	L.SetMetaMethod("__index", map__index)
 	L.SetMetaMethod("__newindex", map__newindex)
 	L.SetMetaMethod("__len", slicemap__len)
+	L.SetMetaMethod("__ipairs", map__ipairs)
 	L.SetMetaMethod("__pairs", map__pairs)
 	flagValue()
 
@@ -355,6 +357,43 @@ func map__pairs(L *lua.State) int {
 		}
 		GoToLua(L, nil, keys[idx], false)
 		val := m.MapIndex(keys[idx])
+		GoToLua(L, nil, val, false)
+		return 2
+	}
+	L.PushGoFunction(iter)
+	return 1
+}
+
+func map__ipairs(L *lua.State) int {
+	m, _ := valueOfProxy(L, 1)
+	keys := m.MapKeys()
+	intKeys := map[uint64]reflect.Value{}
+
+	// Filter integer keys.
+	for _, k := range keys {
+		if k.Kind() == reflect.Interface {
+			k = k.Elem()
+		}
+		switch k.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			i := k.Int()
+			if i > 0 {
+				intKeys[uint64(i)] = k
+			}
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			intKeys[k.Uint()] = k
+		}
+	}
+
+	idx := uint64(0)
+	iter := func(L *lua.State) int {
+		idx++
+		if _, ok := intKeys[idx]; !ok {
+			L.PushNil()
+			return 1
+		}
+		GoToLua(L, nil, reflect.ValueOf(idx), false)
+		val := m.MapIndex(intKeys[idx])
 		GoToLua(L, nil, val, false)
 		return 2
 	}
