@@ -17,6 +17,7 @@ notation!
 
 Pointer values encode as the value pointed to when unproxified.
 
+Unexported struct fields are ignored.
 The "lua" tag is used to match fields in struct conversion.
 
 */
