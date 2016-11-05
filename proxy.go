@@ -527,19 +527,16 @@ func struct__newindex(L *lua.State) int {
 }
 
 // pushNumberValue pushes the number resulting from an arithmetic operation.
-// The type of the result depends on the type of the operands.
-// Rules:
-// - If operands are of the same type, preserve type.
-// - If one type is predeclared, preserve the new type.
-// - If both type are predeclared, convert to float64.
+//
+// At least one operand must be a proxy for this function to be called. See the
+// main documentation for the conversion rules.
 func pushNumberValue(L *lua.State, i interface{}, t1, t2 reflect.Type) {
 	v := reflect.ValueOf(i)
-	if t1 == t2 || isNewScalar(t1) == nil || isNewScalar(t2) == nil {
-		if isNewScalar(t1) != nil {
-			makeValueProxy(L, v.Convert(t2), cNumberMeta)
-		} else {
-			makeValueProxy(L, v.Convert(t1), cNumberMeta)
-		}
+	floatType := reflect.TypeOf(0.0)
+	if t1 == t2 || t2 == floatType {
+		makeValueProxy(L, v.Convert(t1), cNumberMeta)
+	} else if t1 == floatType {
+		makeValueProxy(L, v.Convert(t2), cNumberMeta)
 	} else {
 		L.PushNumber(valueToFloat(v))
 	}
@@ -742,21 +739,22 @@ func string__lt(L *lua.State) int {
 	return 1
 }
 
+// Lua accepts concatenation with string and number.
 func string__concat(L *lua.State) int {
 	v1, t1 := valueOnStack(L, 1)
 	v2, t2 := valueOnStack(L, 2)
 	s1 := valueToString(L, v1)
 	s2 := valueToString(L, v2)
-
 	result := s1 + s2
 
-	if t1 == t2 || isNewScalar(t1) == nil || isNewScalar(t2) == nil {
+	stringType := reflect.TypeOf("")
+	floatType := reflect.TypeOf(0.0)
+	if t1 == t2 || t2 == floatType || t2 == stringType {
 		v := reflect.ValueOf(result)
-		if isNewScalar(t1) != nil {
-			makeValueProxy(L, v.Convert(t2), cNumberMeta)
-		} else {
-			makeValueProxy(L, v.Convert(t1), cNumberMeta)
-		}
+		makeValueProxy(L, v.Convert(t1), cStringMeta)
+	} else if t1 == floatType || t1 == stringType {
+		v := reflect.ValueOf(result)
+		makeValueProxy(L, v.Convert(t2), cStringMeta)
 	} else {
 		L.PushString(result)
 	}

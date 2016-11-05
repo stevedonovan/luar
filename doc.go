@@ -20,5 +20,12 @@ Pointer values encode as the value pointed to when unproxified.
 Unexported struct fields are ignored.
 The "lua" tag is used to match fields in struct conversion.
 
+Usual operation (arithmetic, string concatenation, etc.) work on proxies too.
+The type of the result depends on the type of the operands.
+Rules:
+- If operands are of the same type, preserve the type.
+- If one type is a Lua number, preserve the new type.
+- If the types are different and not Lua numbers, convert to float64.
+
 */
 package luar
