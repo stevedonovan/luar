@@ -44,7 +44,7 @@ func MapToTable(L *lua.State) int {
 func ProxyRaw(L *lua.State) int {
 	v := unwrapProxyOrComplain(L, 1)
 	val := reflect.ValueOf(v)
-	tp := isNewScalarType(val)
+	tp := predeclaredScalarType(val.Type())
 	if tp != nil {
 		val = val.Convert(tp)
 		GoToLua(L, nil, val, false)

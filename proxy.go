@@ -674,7 +674,7 @@ func number__unm(L *lua.State) int {
 		result = -v1.Float()
 	}
 	v := reflect.ValueOf(result)
-	if isNewScalar(t1) != nil {
+	if predeclaredScalarType(t1) != nil {
 		makeValueProxy(L, v1, cNumberMeta)
 	} else {
 		L.PushNumber(v.Float())

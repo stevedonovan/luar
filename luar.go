@@ -374,17 +374,10 @@ var types = []reflect.Type{
 	nil, // UnsafePointer
 }
 
-func isNewScalar(t reflect.Type) reflect.Type {
+// Return the underlying type of a new scalar type, nil otherwise.
+func predeclaredScalarType(t reflect.Type) reflect.Type {
 	pt := types[int(t.Kind())]
 	if pt != nil && pt != t {
-		return pt
-	}
-	return nil
-}
-
-func isNewScalarType(v reflect.Value) reflect.Type {
-	pt := types[int(v.Kind())]
-	if pt != nil && pt != v.Type() {
 		return pt
 	}
 	return nil
@@ -482,31 +475,31 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 
 	switch val.Kind() {
 	case reflect.Float64, reflect.Float32:
-		if !dontproxify && isNewScalarType(val) != nil {
+		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(val.Float())
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if !dontproxify && isNewScalarType(val) != nil {
+		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(float64(val.Int()))
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if !dontproxify && isNewScalarType(val) != nil {
+		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(float64(val.Uint()))
 		}
 	case reflect.String:
-		if !dontproxify && isNewScalarType(val) != nil {
+		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
 			makeValueProxy(L, ptrVal, cStringMeta)
 		} else {
 			L.PushString(val.String())
 		}
 	case reflect.Bool:
-		if !dontproxify && isNewScalarType(val) != nil {
+		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
 			makeValueProxy(L, ptrVal, cInterfaceMeta)
 		} else {
 			L.PushBoolean(val.Bool())
