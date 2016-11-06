@@ -704,7 +704,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 				}
 				value = copyTableToSlice(L, t, idx, visited)
 			} else {
-				value = unwrapProxyOrComplain(L, idx)
+				value = mustUnwrapProxy(L, idx)
 			}
 		case reflect.Slice:
 			// if we get a table, then copy its values to a new slice
@@ -715,7 +715,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 				}
 				value = copyTableToSlice(L, t, idx, visited)
 			} else {
-				value = unwrapProxyOrComplain(L, idx)
+				value = mustUnwrapProxy(L, idx)
 			}
 		case reflect.Map:
 			if istable {
@@ -725,7 +725,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 				}
 				value = copyTableToMap(L, t, idx, visited)
 			} else {
-				value = unwrapProxyOrComplain(L, idx)
+				value = mustUnwrapProxy(L, idx)
 			}
 		case reflect.Struct:
 			if istable {
@@ -735,7 +735,7 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 				}
 				value = copyTableToStruct(L, t, idx, visited)
 			} else {
-				value = unwrapProxyOrComplain(L, idx)
+				value = mustUnwrapProxy(L, idx)
 			}
 		case reflect.Interface:
 			if istable {
@@ -759,10 +759,10 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 			} else if L.IsNil(idx) {
 				return nil
 			} else {
-				value = unwrapProxyOrComplain(L, idx)
+				value = mustUnwrapProxy(L, idx)
 			}
 		default:
-			value = unwrapProxyOrComplain(L, idx)
+			value = mustUnwrapProxy(L, idx)
 		}
 	}
 

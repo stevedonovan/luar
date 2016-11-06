@@ -10,7 +10,7 @@ import (
 
 // ArrayToTable defines 'luar.array2table' when 'Init' is called.
 func ArrayToTable(L *lua.State) int {
-	return CopyArrayToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
+	return CopyArrayToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // TODO: What is this for?
@@ -37,12 +37,12 @@ func MakeSlice(L *lua.State) int {
 
 // MapToTable defines 'luar.map2table' when 'Init' is called.
 func MapToTable(L *lua.State) int {
-	return CopyMapToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
+	return CopyMapToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // ProxyRaw defines 'luar.raw' when 'Init' is called.
 func ProxyRaw(L *lua.State) int {
-	v := unwrapProxyOrComplain(L, 1)
+	v := mustUnwrapProxy(L, 1)
 	val := reflect.ValueOf(v)
 	tp := predeclaredScalarType(val.Type())
 	if tp != nil {
@@ -56,7 +56,7 @@ func ProxyRaw(L *lua.State) int {
 
 // ProxyType defines 'luar.type' when 'Init' is called.
 func ProxyType(L *lua.State) int {
-	v := unwrapProxy(L, 1)
+	v := mustUnwrapProxy(L, 1)
 	if v != nil {
 		GoToLua(L, nil, reflect.ValueOf(reflect.TypeOf(v)), false)
 	} else {
@@ -85,10 +85,10 @@ func SliceSub(L *lua.State) int {
 
 // SliceToTable defines 'luar.slice2table' when 'Init' is called.
 func SliceToTable(L *lua.State) int {
-	return CopySliceToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
+	return CopySliceToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // StructToTable defines 'luar.struct2table' when 'Init' is called.
 func StructToTable(L *lua.State) int {
-	return CopyStructToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
+	return CopyStructToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }

@@ -45,7 +45,12 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	L.SetMetaTable(-2)
 }
 
-func valueOnStack(L *lua.State, idx int) (reflect.Value, reflect.Type) {
+func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
+	vp := (*valueProxy)(L.ToUserdata(idx))
+	return vp.value, vp.t
+}
+
+func valueOfProxyOrScalar(L *lua.State, idx int) (reflect.Value, reflect.Type) {
 	if isValueProxy(L, idx) {
 		return valueOfProxy(L, idx)
 	}
@@ -59,11 +64,6 @@ func valueOnStack(L *lua.State, idx int) (reflect.Value, reflect.Type) {
 		return reflect.ValueOf(v), reflect.TypeOf(v)
 	}
 	return reflect.Value{}, nil
-}
-
-func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
-	vp := (*valueProxy)(L.ToUserdata(idx))
-	return vp.value, vp.t
 }
 
 func isValueProxy(L *lua.State, idx int) bool {
@@ -81,20 +81,16 @@ func isValueProxy(L *lua.State, idx int) bool {
 }
 
 func unwrapProxy(L *lua.State, idx int) interface{} {
-	if isValueProxy(L, idx) {
-		v, _ := valueOfProxy(L, idx)
-		return v.Interface()
-	}
-	return nil
+	v, _ := valueOfProxy(L, idx)
+	return v.Interface()
 }
 
-func unwrapProxyOrComplain(L *lua.State, idx int) interface{} {
-	if isValueProxy(L, idx) {
-		v, _ := valueOfProxy(L, idx)
-		return v.Interface()
+func mustUnwrapProxy(L *lua.State, idx int) interface{} {
+	if !isValueProxy(L, idx) {
+		RaiseError(L, fmt.Sprintf("arg #%d is not a Go object!", idx))
 	}
-	RaiseError(L, fmt.Sprintf("arg #%d is not a Go object!", idx))
-	return nil
+	v, _ := valueOfProxy(L, idx)
+	return v.Interface()
 }
 
 func callGoMethod(L *lua.State, name string, st reflect.Value) {
@@ -553,8 +549,8 @@ func commonKind(v1, v2 reflect.Value) reflect.Kind {
 }
 
 func number__lt(L *lua.State) int {
-	v1, _ := valueOnStack(L, 1)
-	v2, _ := valueOnStack(L, 2)
+	v1, _ := valueOfProxyOrScalar(L, 1)
+	v2, _ := valueOfProxyOrScalar(L, 2)
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
 		L.PushBoolean(v1.Uint() < v2.Uint())
@@ -567,8 +563,8 @@ func number__lt(L *lua.State) int {
 }
 
 func number__add(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -583,8 +579,8 @@ func number__add(L *lua.State) int {
 }
 
 func number__sub(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -599,8 +595,8 @@ func number__sub(L *lua.State) int {
 }
 
 func number__mul(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -615,8 +611,8 @@ func number__mul(L *lua.State) int {
 }
 
 func number__div(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -631,8 +627,8 @@ func number__div(L *lua.State) int {
 }
 
 func number__mod(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -647,8 +643,8 @@ func number__mod(L *lua.State) int {
 }
 
 func number__pow(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -663,7 +659,7 @@ func number__pow(L *lua.State) int {
 }
 
 func number__unm(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
 	var result interface{}
 	switch numericKind(v1) {
 	case reflect.Uint64:
@@ -683,22 +679,22 @@ func number__unm(L *lua.State) int {
 }
 
 func string__len(L *lua.State) int {
-	v1, _ := valueOnStack(L, 1)
+	v1, _ := valueOfProxyOrScalar(L, 1)
 	L.PushInteger(int64(v1.Len()))
 	return 1
 }
 
 func string__lt(L *lua.State) int {
-	v1, _ := valueOnStack(L, 1)
-	v2, _ := valueOnStack(L, 2)
+	v1, _ := valueOfProxyOrScalar(L, 1)
+	v2, _ := valueOfProxyOrScalar(L, 2)
 	L.PushBoolean(v1.String() < v2.String())
 	return 1
 }
 
 // Lua accepts concatenation with string and number.
 func string__concat(L *lua.State) int {
-	v1, t1 := valueOnStack(L, 1)
-	v2, t2 := valueOnStack(L, 2)
+	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v2, t2 := valueOfProxyOrScalar(L, 2)
 	s1 := valueToString(L, v1)
 	s2 := valueToString(L, v2)
 	result := s1 + s2
