@@ -45,14 +45,6 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	L.SetMetaTable(-2)
 }
 
-func proxy__gc(L *lua.State) int {
-	vp := (*valueProxy)(L.ToUserdata(1))
-	proxymu.Lock()
-	delete(proxyMap, vp)
-	proxymu.Unlock()
-	return 0
-}
-
 func valueOnStack(L *lua.State, idx int) (reflect.Value, reflect.Type) {
 	if isValueProxy(L, idx) {
 		return valueOfProxy(L, idx)
@@ -105,51 +97,24 @@ func unwrapProxyOrComplain(L *lua.State, idx int) interface{} {
 	return nil
 }
 
-func proxyType(L *lua.State) int {
-	v := unwrapProxy(L, 1)
-	if v != nil {
-		GoToLua(L, nil, reflect.ValueOf(reflect.TypeOf(v)), false)
-	} else {
-		L.PushNil()
+func callGoMethod(L *lua.State, name string, st reflect.Value) {
+	ret := st.MethodByName(name)
+	if !ret.IsValid() {
+		T := st.Type()
+		// Could not resolve this method. Perhaps it's defined on the pointer?
+		if T.Kind() != reflect.Ptr {
+			if st.CanAddr() { // easy if we can get a pointer directly
+				st = st.Addr()
+			} else { // otherwise have to create and initialize one...
+				VP := reflect.New(T)
+				VP.Elem().Set(st)
+				st = VP
+			}
+		}
+		ret = st.MethodByName(name)
+		assertValid(L, ret, st, name, "method")
 	}
-	return 1
-}
-
-func proxyRaw(L *lua.State) int {
-	v := unwrapProxyOrComplain(L, 1)
-	val := reflect.ValueOf(v)
-	tp := isNewScalarType(val)
-	if tp != nil {
-		val = val.Convert(tp)
-		GoToLua(L, nil, val, false)
-	} else {
-		L.PushNil()
-	}
-	return 1
-}
-
-func channel_send(L *lua.State) int {
-	L.PushValue(2)
-	L.PushValue(1)
-	L.PushBoolean(true)
-	return L.Yield(3)
-	//~ ch,t := valueOfProxy(L,1)
-	//~ val := reflect.ValueOf(LuaToGo(L, t.Elem(),2))
-	//~ ch.Send(val)
-	//~ return 0
-}
-
-func channel_recv(L *lua.State) int {
-	L.PushValue(1)
-	L.PushBoolean(false)
-	return L.Yield(2)
-	//~ ch,t := valueOfProxy(L,1)
-	//~ L.Yield(0)
-	//~ val,ok := ch.Recv()
-	//~ GoToLua(L,t.Elem(),val)
-	//~ L.PushBoolean(ok)
-	//~ L.Resume(0)
-	//~ return 2
+	L.PushGoFunction(GoLuaFunc(L, ret))
 }
 
 // TODO: What is this for?
@@ -179,13 +144,6 @@ func GoLua(L *lua.State) int {
 		}
 	}()
 	return 0
-}
-
-// TODO: What is this for?
-func MakeChannel(L *lua.State) int {
-	ch := make(chan interface{})
-	makeValueProxy(L, reflect.ValueOf(ch), cChannelMeta)
-	return 1
 }
 
 // InitProxies sets up a Lua state for using Go<->Lua proxies.
@@ -257,12 +215,6 @@ func InitProxies(L *lua.State) {
 	flagValue()
 }
 
-func proxy__tostring(L *lua.State) int {
-	obj, _ := valueOfProxy(L, 1)
-	L.PushString(fmt.Sprintf("%v", obj))
-	return 1
-}
-
 func proxy__eq(L *lua.State) int {
 	// TODO: The two values are not necessarily proxies, are they?
 	v1, t1 := valueOfProxy(L, 1)
@@ -274,20 +226,42 @@ func proxy__eq(L *lua.State) int {
 	return 1
 }
 
-func sliceSub(L *lua.State) int {
-	slice, _ := valueOfProxy(L, 1)
-	i1, i2 := L.ToInteger(2), L.ToInteger(3)
-	newslice := slice.Slice(i1-1, i2)
-	makeValueProxy(L, newslice, cSliceMeta)
+func proxy__gc(L *lua.State) int {
+	vp := (*valueProxy)(L.ToUserdata(1))
+	proxymu.Lock()
+	delete(proxyMap, vp)
+	proxymu.Unlock()
+	return 0
+}
+
+func proxy__tostring(L *lua.State) int {
+	obj, _ := valueOfProxy(L, 1)
+	L.PushString(fmt.Sprintf("%v", obj))
 	return 1
 }
 
-func sliceAppend(L *lua.State) int {
-	slice, _ := valueOfProxy(L, 1)
-	val := reflect.ValueOf(LuaToGo(L, nil, 2))
-	newslice := reflect.Append(slice, val)
-	makeValueProxy(L, newslice, cSliceMeta)
-	return 1
+func channel_send(L *lua.State) int {
+	L.PushValue(2)
+	L.PushValue(1)
+	L.PushBoolean(true)
+	return L.Yield(3)
+	//~ ch,t := valueOfProxy(L,1)
+	//~ val := reflect.ValueOf(LuaToGo(L, t.Elem(),2))
+	//~ ch.Send(val)
+	//~ return 0
+}
+
+func channel_recv(L *lua.State) int {
+	L.PushValue(1)
+	L.PushBoolean(false)
+	return L.Yield(2)
+	//~ ch,t := valueOfProxy(L,1)
+	//~ L.Yield(0)
+	//~ val,ok := ch.Recv()
+	//~ GoToLua(L,t.Elem(),val)
+	//~ L.PushBoolean(ok)
+	//~ L.Resume(0)
+	//~ return 2
 }
 
 func slice__index(L *lua.State) int {
@@ -461,26 +435,6 @@ func slice__ipairs(L *lua.State) int {
 	}
 	L.PushGoFunction(iter)
 	return 1
-}
-
-func callGoMethod(L *lua.State, name string, st reflect.Value) {
-	ret := st.MethodByName(name)
-	if !ret.IsValid() {
-		T := st.Type()
-		// Could not resolve this method. Perhaps it's defined on the pointer?
-		if T.Kind() != reflect.Ptr {
-			if st.CanAddr() { // easy if we can get a pointer directly
-				st = st.Addr()
-			} else { // otherwise have to create and initialize one...
-				VP := reflect.New(T)
-				VP.Elem().Set(st)
-				st = VP
-			}
-		}
-		ret = st.MethodByName(name)
-		assertValid(L, ret, st, name, "method")
-	}
-	L.PushGoFunction(GoLuaFunc(L, ret))
 }
 
 func struct__index(L *lua.State) int {

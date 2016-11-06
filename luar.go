@@ -24,15 +24,13 @@ func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name strin
 	}
 }
 
-// Null is used to define 'luar.null' which is used in place of 'nil' when
-// converting slices and structs.
-type Null int
+// NullT is the type of 'luar.null'.
+type NullT int
 
 var (
 	tslice    = typeof((*[]interface{})(nil))
 	tmap      = typeof((*map[string]interface{})(nil))
-	null      = Null(0)
-	nullv     = reflect.ValueOf(null)
+	nullv     = reflect.ValueOf(Null)
 	nullables = map[reflect.Kind]bool{
 		reflect.Chan:      true,
 		reflect.Func:      true,
@@ -41,6 +39,10 @@ var (
 		reflect.Ptr:       true,
 		reflect.Slice:     true,
 	}
+
+	// Null is the definition of 'luar.null' which is used in place of 'nil' when
+	// converting slices and structs.
+	Null = NullT(0)
 )
 
 func isNil(val reflect.Value) bool {
@@ -1117,36 +1119,8 @@ func Lookup(L *lua.State, path string, idx int) {
 	}
 }
 
-func map2table(L *lua.State) int {
-	return CopyMapToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
-}
-
-func slice2table(L *lua.State) int {
-	return CopySliceToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
-}
-
-func array2table(L *lua.State) int {
-	return CopyArrayToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
-}
-
-func struct2table(L *lua.State) int {
-	return CopyStructToTable(L, reflect.ValueOf(unwrapProxyOrComplain(L, 1)))
-}
-
-func makeMap(L *lua.State) int {
-	m := reflect.MakeMap(tmap)
-	makeValueProxy(L, m, cMapMeta)
-	return 1
-}
-
-func makeSlice(L *lua.State) int {
-	n := L.OptInteger(1, 0)
-	s := reflect.MakeSlice(tslice, n, n+1)
-	makeValueProxy(L, s, cSliceMeta)
-	return 1
-}
-
-const setup = `
+// LuarSetup replaces the 'pairs' and 'ipairs' so they work on proxies as well.
+const LuarSetup = `
 local opairs = pairs
 function pairs(t)
 	local mt = getmetatable(t)
@@ -1182,24 +1156,25 @@ func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
 	InitProxies(L)
-	_ = L.DoString(setup) // Never fails.
+	_ = L.DoString(LuarSetup) // Never fails.
 	RawRegister(L, "luar", Map{
 		// Functions.
-		"map2table":    map2table,
-		"slice2table":  slice2table,
-		"array2table":  array2table,
-		"struct2table": struct2table,
-		"map":          makeMap,
-		"slice":        makeSlice,
-		"type":         proxyType,
-		"sub":          sliceSub,
-		"append":       sliceAppend,
-		"raw":          proxyRaw,
+		"map2table":    MapToTable,
+		"slice2table":  SliceToTable,
+		"array2table":  ArrayToTable,
+		"struct2table": StructToTable,
+		"map":          MakeMap,
+		"slice":        MakeSlice,
+		"type":         ProxyType,
+		"sub":          SliceSub,
+		"append":       SliceAppend,
+		"raw":          ProxyRaw,
 		// Values.
-		"null": null,
+		"null": Null,
 	})
-	Register(L, "luar", Map{
-		"value": reflect.ValueOf,
-	})
+	// TODO: What is this for?
+	// Register(L, "luar", Map{
+	// 	"value": reflect.ValueOf,
+	// })
 	return L
 }
