@@ -23,7 +23,7 @@ const (
 	cMapMeta       = "mapMT"
 	cStructMeta    = "structMT"
 	cInterfaceMeta = "interfaceMT"
-	cChannelMeta   = "ChannelMT"
+	cChannelMeta   = "channelMT"
 )
 
 var proxyMap = map[*valueProxy]reflect.Value{}
