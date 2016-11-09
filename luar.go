@@ -1165,6 +1165,11 @@ func Init() *lua.State {
 		// Values.
 		"null": Null,
 	})
+
+	RawRegister(L, "", Map{
+		"type": ProxyType,
+	})
+
 	// TODO: What is this for?
 	// Register(L, "luar", Map{
 	// 	"value": reflect.ValueOf,

@@ -114,7 +114,7 @@ a[2] = 180
 `
 	const code_b = `
 assert(#b == 2)
-assert(type(b) == 'userdata')
+assert(type(b) == 'table<[2]int>')
 assert(b[1] == 17)
 assert(b[2] == 18)
 for _, v in ipairs(b) do
@@ -260,8 +260,8 @@ it = NewName(t)
 assert(it.GetName()=='Alice')
 assert(GetName(it)=='Alice')
 assert(GetName(t)=='Alice')
-assert(luar.type(t).String() == "*luar.person")
-assert(luar.type(it).String() == "*luar.person")
+assert(type(t) == "table<luar.person>")
+assert(type(it) == "table<luar.person>")
 `
 
 	L := Init()
@@ -399,9 +399,9 @@ Libs = {}
 function Libs.fun(s,i,t,m)
 	assert(s == 'hello')
 	assert(i == 42)
-    --// slices and maps passed as proxies
-	assert(type(t) == 'userdata' and t[1] == 42)
-	assert(type(m) == 'userdata' and m.name == 'Joe')
+	-- slices and maps passed as proxies
+	assert(type(t) == 'table<[]int>' and t[1] == 42)
+	assert(type(m) == 'table<map[string]string>' and m.name == 'Joe')
 	return 'ok'
 end`
 
@@ -632,6 +632,27 @@ assert(t[0] == nil)
 assert(t[1] == "foo")
 assert(t[2] == "bar")
 assert(t[3] == nil)
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestProxyType(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	m := map[string]string{
+		"foo": "bar",
+	}
+
+	Register(L, "", Map{"m": m})
+
+	const code = `
+print(type(m))
+print("end")
 `
 
 	err := L.DoString(code)

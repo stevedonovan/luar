@@ -54,14 +54,41 @@ func ProxyRaw(L *lua.State) int {
 	return 1
 }
 
-// ProxyType defines 'luar.type' when 'Init' is called.
+// ProxyType re-defines 'type' when 'Init' is called.
+//
+// It behaves like Lua's "type" except for proxies for which it returns
+// 'table<TYPE>', 'string<TYPE>' or 'number<TYPE>' with TYPE being the go type.
 func ProxyType(L *lua.State) int {
-	v := mustUnwrapProxy(L, 1)
-	if v != nil {
-		GoToLua(L, nil, reflect.ValueOf(reflect.TypeOf(v)), false)
-	} else {
-		L.PushNil()
+	if !isValueProxy(L, 1) {
+		L.PushString(L.LTypename(1))
+		return 1
 	}
+	val := mustUnwrapProxy(L, 1)
+	if val == nil {
+		L.PushNil()
+		return 1
+	}
+
+	v := reflect.ValueOf(val)
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.Struct:
+		L.PushString("table<" + v.Type().String() + ">")
+		return 1
+	case reflect.String:
+		L.PushString("string<" + v.Type().String() + ">")
+		return 1
+	}
+
+	if numericKind(v) != reflect.Invalid {
+		L.PushString("number<" + v.Type().String() + ">")
+		return 1
+	}
+
+	L.PushString("userdata<" + v.Type().String() + ">")
 	return 1
 }
 
