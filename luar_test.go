@@ -298,6 +298,40 @@ assert(a.Age ==17)
 	}
 }
 
+type directStruct struct {
+	v []string
+}
+
+func (s *directStruct) GetSlice() []string {
+	return s.v
+}
+
+// Issue is here: when not return a pointer, GetSlice() cannot be found.
+func newDirectStruct(initial string) directStruct {
+	r := directStruct{}
+	r.v = append(r.v, initial)
+	return r
+}
+
+func TestDirectStructMethod(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	Register(L, "", Map{
+		"newDirectStruct": newDirectStruct,
+	})
+
+	err := L.DoString(`
+s = newDirectStruct("bar")
+v = s.GetSlice()
+assert(v[1] == "bar")
+`)
+
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestInterfaceAccess(t *testing.T) {
 	const code = `
 -- Calling methods on an interface.

@@ -841,6 +841,15 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 		}
 		resV := callGo(L, funV, args)
 		for _, val := range resV {
+			if val.Kind() == reflect.Struct {
+				// If the function returns a struct (and not a pointer to a struct),
+				// calling GoToLua directly will convert it to a table, making the
+				// mathods inaccessible. We work around that issue by forcibly passing a
+				// pointer to a struct.
+				n := reflect.New(val.Type())
+				n.Elem().Set(val)
+				val = n
+			}
 			GoToLua(L, nil, val, false)
 		}
 		return len(resV)
