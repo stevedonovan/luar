@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -485,17 +486,18 @@ func struct__newindex(L *lua.State) int {
 func pushNumberValue(L *lua.State, i interface{}, t1, t2 reflect.Type) {
 	v := reflect.ValueOf(i)
 	floatType := reflect.TypeOf(0.0)
-	if t1 == t2 || t2 == floatType {
+	stringType := reflect.TypeOf("")
+	if t1 == t2 || t2 == floatType || t2 == stringType {
 		makeValueProxy(L, v.Convert(t1), cNumberMeta)
-	} else if t1 == floatType {
+	} else if t1 == floatType || t1 == floatType {
 		makeValueProxy(L, v.Convert(t2), cNumberMeta)
 	} else {
-		L.PushNumber(valueToFloat(v))
+		L.PushNumber(valueToNumber(L, v))
 	}
 }
 
 // Shorthand for kind-switches.
-func numericKind(v reflect.Value) reflect.Kind {
+func unsizedKind(v reflect.Value) reflect.Kind {
 	switch v.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return reflect.Int64
@@ -503,33 +505,33 @@ func numericKind(v reflect.Value) reflect.Kind {
 		return reflect.Uint64
 	case reflect.Float32, reflect.Float64:
 		return reflect.Float64
-	default:
-		return reflect.Invalid
 	}
+	return v.Kind()
 }
 
-func valueToFloat(v reflect.Value) float64 {
-	switch numericKind(v) {
+func valueToNumber(L *lua.State, v reflect.Value) float64 {
+	switch unsizedKind(v) {
 	case reflect.Int64:
 		return float64(v.Int())
 	case reflect.Uint64:
 		return float64(v.Uint())
+	case reflect.String:
+		if f, err := strconv.ParseFloat(v.String(), 64); err == nil {
+			return f
+		}
+		RaiseError(L, "cannot convert to number")
+	case reflect.Float64:
+		return v.Float()
 	}
-	return v.Float()
+	RaiseError(L, "cannot convert to number")
+	return 0
 }
 
 func valueToString(L *lua.State, v reflect.Value) string {
-	if numericKind(v) != reflect.Invalid {
-		switch numericKind(v) {
-		case reflect.Uint64:
-			return fmt.Sprintf("%v", v.Uint())
-		case reflect.Int64:
-			return fmt.Sprintf("%v", v.Int())
-		case reflect.Float64:
-			return fmt.Sprintf("%v", v.Float())
-		}
-	}
-	if v.Kind() == reflect.String {
+	switch unsizedKind(v) {
+	case reflect.Uint64, reflect.Int64, reflect.Float64:
+		return fmt.Sprintf("%v", valueToNumber(L, v))
+	case reflect.String:
 		return v.String()
 	}
 
@@ -540,8 +542,8 @@ func valueToString(L *lua.State, v reflect.Value) string {
 // commonKind returns the kind to which v1 and v2 can be converted with the
 // least information loss.
 func commonKind(v1, v2 reflect.Value) reflect.Kind {
-	k1 := numericKind(v1)
-	k2 := numericKind(v2)
+	k1 := unsizedKind(v1)
+	k2 := unsizedKind(v2)
 	if k1 == k2 && (k1 == reflect.Uint64 || k1 == reflect.Int64) {
 		return k1
 	}
@@ -557,7 +559,7 @@ func number__lt(L *lua.State) int {
 	case reflect.Int64:
 		L.PushBoolean(v1.Int() < v2.Int())
 	case reflect.Float64:
-		L.PushBoolean(valueToFloat(v1) < valueToFloat(v2))
+		L.PushBoolean(valueToNumber(L, v1) < valueToNumber(L, v2))
 	}
 	return 1
 }
@@ -572,7 +574,7 @@ func number__add(L *lua.State) int {
 	case reflect.Int64:
 		result = v1.Int() + v2.Int()
 	case reflect.Float64:
-		result = valueToFloat(v1) + valueToFloat(v2)
+		result = valueToNumber(L, v1) + valueToNumber(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -588,7 +590,7 @@ func number__sub(L *lua.State) int {
 	case reflect.Int64:
 		result = v1.Int() - v2.Int()
 	case reflect.Float64:
-		result = valueToFloat(v1) - valueToFloat(v2)
+		result = valueToNumber(L, v1) - valueToNumber(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -604,7 +606,7 @@ func number__mul(L *lua.State) int {
 	case reflect.Int64:
 		result = v1.Int() * v2.Int()
 	case reflect.Float64:
-		result = valueToFloat(v1) * valueToFloat(v2)
+		result = valueToNumber(L, v1) * valueToNumber(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -620,7 +622,7 @@ func number__div(L *lua.State) int {
 	case reflect.Int64:
 		result = v1.Int() / v2.Int()
 	case reflect.Float64:
-		result = valueToFloat(v1) / valueToFloat(v2)
+		result = valueToNumber(L, v1) / valueToNumber(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -636,7 +638,7 @@ func number__mod(L *lua.State) int {
 	case reflect.Int64:
 		result = v1.Int() % v2.Int()
 	case reflect.Float64:
-		result = math.Mod(valueToFloat(v1), valueToFloat(v2))
+		result = math.Mod(valueToNumber(L, v1), valueToNumber(L, v2))
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -652,7 +654,7 @@ func number__pow(L *lua.State) int {
 	case reflect.Int64:
 		result = math.Pow(float64(v1.Int()), float64(v2.Int()))
 	case reflect.Float64:
-		result = math.Pow(valueToFloat(v1), valueToFloat(v2))
+		result = math.Pow(valueToNumber(L, v1), valueToNumber(L, v2))
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -661,13 +663,13 @@ func number__pow(L *lua.State) int {
 func number__unm(L *lua.State) int {
 	v1, t1 := valueOfProxyOrScalar(L, 1)
 	var result interface{}
-	switch numericKind(v1) {
+	switch unsizedKind(v1) {
 	case reflect.Uint64:
 		result = -v1.Uint()
 	case reflect.Int64:
 		result = -v1.Int()
-	case reflect.Float64:
-		result = -v1.Float()
+	case reflect.Float64, reflect.String:
+		result = -valueToNumber(L, v1)
 	}
 	v := reflect.ValueOf(result)
 	if predeclaredScalarType(t1) != nil {
