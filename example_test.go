@@ -198,14 +198,14 @@ func ExampleCopyTableToStruct() {
 	fmt.Println(s.Name)
 	fmt.Println(s.Marked)
 	fmt.Println(s.Options.Leave)
-	fmt.Println(s.Options.Tags)
+	fmt.Println(s.Options.Tags["foolish"], s.Options.Tags["strong"])
 	// Output:
 	// true
 	// 24
 	// dumbo
 	// [1 2]
 	// true
-	// map[strong:true foolish:true]
+	// true true
 }
 
 func ExampleGoToLua() {
