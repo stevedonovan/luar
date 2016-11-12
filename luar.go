@@ -1179,9 +1179,5 @@ func Init() *lua.State {
 		// Values.
 		"null": Null,
 	})
-	// TODO: What is this for?
-	// Register(L, "luar", Map{
-	// 	"value": reflect.ValueOf,
-	// })
 	return L
 }
