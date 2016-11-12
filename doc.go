@@ -1,34 +1,40 @@
 /*
 Package luar provides a convenient way to access Lua from Go.
-It uses Alessandro Arzilli's golua (https://github.com/aarzilli/golua). Plain Go
-functions can be registered with luar and they will be called by reflection;
-methods on Go structs likewise.
 
-Go types like slices, maps and structs are passed over as Lua proxy objects,
-or alternatively copied as tables.
+It uses Alessandro Arzilli's golua (https://github.com/aarzilli/golua).
+
+Most Go values can be passed to Lua: basic types, strings, complex numbers,
+user-defined types, pointers, composite types, functions, channels, etc.
+
+Composite types are processed recursively.
+
+Methods can be called on user-defined types. That these methods will be callable
+using _dot-notation_ rather than colon notation.
+
+Slices, maps and structs can be copied as tables, or alternatively passed over
+as Lua proxy objects which can be naturally indexed.
+
+In the case of structs and string maps, fields have priority over methods.
+
+Unexported struct fields are ignored. The "lua" tag is used to match fields in
+struct conversion.
 
 You may pass a Lua table to an imported Go function; if the table is
-'array-like' then it can be converted to a Go slice; if it is 'map-like' then it
-is converted to a Go map. Usually non-primitive Go values are passed to Lua as
-wrapped userdata which can be naturally indexed if they represent slices, maps
-or structs. Methods defined on structs can be called, again using reflection. Do
-note that these methods will be callable using _dot-notation_ rather than colon
-notation!
+'array-like' then it is converted to a Go slice; if it is 'map-like' then it
+is converted to a Go map.
 
 Pointer values encode as the value pointed to when unproxified.
 
-Unexported struct fields are ignored.
-The "lua" tag is used to match fields in struct conversion.
-
-Usual operations (arithmetic, string concatenation, etc.) work on proxies too.
-The type of the result depends on the type of the operands.
-Rules:
+Usual operators (arithmetic, string concatenation, pairs/ipairs, etc.) work on
+proxies too. The type of the result depends on the type of the operands. The
+rules are as follows:
 
 - If the operands are of the same type, use this type.
 
-- If one type is a Lua number, use the new type.
+- If one type is a Lua number, use the other, user-defined type.
 
-- If the types are different and not Lua numbers, convert to complex128 (proxy), Lua number, or Lua string according to the result kind.
+- If the types are different and not Lua numbers, convert to complex128 (proxy),
+Lua number, or Lua string according to the result kind.
 
 */
 package luar
