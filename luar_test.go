@@ -173,6 +173,39 @@ b[1] = 170
 	}
 }
 
+func TestComplex(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	c := 2 + 3i
+	a := NewA(32)
+
+	Register(L, "", Map{
+		"c": c,
+		"a": a,
+	})
+
+	const code = `
+assert(c == luar.complex(2, 3))
+assert(luar.real(c) == 2)
+assert(luar.imag(c) == 3)
+c = c+c
+assert(c == luar.complex(4, 6))
+c = -c
+assert(c == luar.complex(-4, -6))
+c = 2*c
+assert(c == luar.complex(-8, -12))
+
+z = c / a
+assert(z == luar.complex(-0.25, -0.375))
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestNamespace(t *testing.T) {
 	keys := func(m map[string]interface{}) (res []string) {
 		res = make([]string, 0)

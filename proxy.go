@@ -3,6 +3,7 @@ package luar
 import (
 	"fmt"
 	"math"
+	"math/cmplx"
 	"reflect"
 	"strconv"
 	"sync"
@@ -19,6 +20,7 @@ type valueProxy struct {
 
 const (
 	cNumberMeta    = "numberMT"
+	cComplexMeta   = "complexMT"
 	cStringMeta    = "stringMT"
 	cSliceMeta     = "sliceMT"
 	cMapMeta       = "mapMT"
@@ -165,6 +167,16 @@ func InitProxies(L *lua.State) {
 	L.SetMetaMethod("__mul", number__mul)
 	L.SetMetaMethod("__div", number__div)
 	L.SetMetaMethod("__mod", number__mod)
+	L.SetMetaMethod("__pow", number__pow)
+	L.SetMetaMethod("__unm", number__unm)
+	flagValue()
+
+	L.NewMetaTable(cComplexMeta)
+	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__add", number__add)
+	L.SetMetaMethod("__sub", number__sub)
+	L.SetMetaMethod("__mul", number__mul)
+	L.SetMetaMethod("__div", number__div)
 	L.SetMetaMethod("__pow", number__pow)
 	L.SetMetaMethod("__unm", number__unm)
 	flagValue()
@@ -479,18 +491,28 @@ func struct__newindex(L *lua.State) int {
 	return 0
 }
 
+func isPredeclaredType(t reflect.Type) bool {
+	return t == reflect.TypeOf(0.0) || t == reflect.TypeOf("")
+}
+
 // pushNumberValue pushes the number resulting from an arithmetic operation.
 //
 // At least one operand must be a proxy for this function to be called. See the
 // main documentation for the conversion rules.
 func pushNumberValue(L *lua.State, i interface{}, t1, t2 reflect.Type) {
 	v := reflect.ValueOf(i)
-	floatType := reflect.TypeOf(0.0)
-	stringType := reflect.TypeOf("")
-	if t1 == t2 || t2 == floatType || t2 == stringType {
-		makeValueProxy(L, v.Convert(t1), cNumberMeta)
-	} else if t1 == floatType || t1 == floatType {
-		makeValueProxy(L, v.Convert(t2), cNumberMeta)
+	isComplex := unsizedKind(v) == reflect.Complex128
+	mt := cNumberMeta
+	if isComplex {
+		mt = cComplexMeta
+	}
+	if t1 == t2 || isPredeclaredType(t2) {
+		makeValueProxy(L, v.Convert(t1), mt)
+	} else if isPredeclaredType(t1) {
+		makeValueProxy(L, v.Convert(t2), mt)
+	} else if isComplex {
+		complexType := reflect.TypeOf(0i)
+		makeValueProxy(L, v.Convert(complexType), cComplexMeta)
 	} else {
 		L.PushNumber(valueToNumber(L, v))
 	}
@@ -503,8 +525,10 @@ func unsizedKind(v reflect.Value) reflect.Kind {
 		return reflect.Int64
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return reflect.Uint64
-	case reflect.Float32, reflect.Float64:
+	case reflect.Float64, reflect.Float32:
 		return reflect.Float64
+	case reflect.Complex128, reflect.Complex64:
+		return reflect.Complex128
 	}
 	return v.Kind()
 }
@@ -515,16 +539,23 @@ func valueToNumber(L *lua.State, v reflect.Value) float64 {
 		return float64(v.Int())
 	case reflect.Uint64:
 		return float64(v.Uint())
+	case reflect.Float64:
+		return v.Float()
 	case reflect.String:
 		if f, err := strconv.ParseFloat(v.String(), 64); err == nil {
 			return f
 		}
 		RaiseError(L, "cannot convert to number")
-	case reflect.Float64:
-		return v.Float()
 	}
 	RaiseError(L, "cannot convert to number")
 	return 0
+}
+
+func valueToComplex(L *lua.State, v reflect.Value) complex128 {
+	if unsizedKind(v) == reflect.Complex128 {
+		return v.Complex()
+	}
+	return complex(valueToNumber(L, v), 0)
 }
 
 func valueToString(L *lua.State, v reflect.Value) string {
@@ -546,6 +577,9 @@ func commonKind(v1, v2 reflect.Value) reflect.Kind {
 	k2 := unsizedKind(v2)
 	if k1 == k2 && (k1 == reflect.Uint64 || k1 == reflect.Int64) {
 		return k1
+	}
+	if k1 == reflect.Complex128 || k2 == reflect.Complex128 {
+		return reflect.Complex128
 	}
 	return reflect.Float64
 }
@@ -575,6 +609,8 @@ func number__add(L *lua.State) int {
 		result = v1.Int() + v2.Int()
 	case reflect.Float64:
 		result = valueToNumber(L, v1) + valueToNumber(L, v2)
+	case reflect.Complex128:
+		result = valueToComplex(L, v1) + valueToComplex(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -591,6 +627,8 @@ func number__sub(L *lua.State) int {
 		result = v1.Int() - v2.Int()
 	case reflect.Float64:
 		result = valueToNumber(L, v1) - valueToNumber(L, v2)
+	case reflect.Complex128:
+		result = valueToComplex(L, v1) - valueToComplex(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -607,6 +645,8 @@ func number__mul(L *lua.State) int {
 		result = v1.Int() * v2.Int()
 	case reflect.Float64:
 		result = valueToNumber(L, v1) * valueToNumber(L, v2)
+	case reflect.Complex128:
+		result = valueToComplex(L, v1) * valueToComplex(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -623,6 +663,8 @@ func number__div(L *lua.State) int {
 		result = v1.Int() / v2.Int()
 	case reflect.Float64:
 		result = valueToNumber(L, v1) / valueToNumber(L, v2)
+	case reflect.Complex128:
+		result = valueToComplex(L, v1) / valueToComplex(L, v2)
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -655,6 +697,8 @@ func number__pow(L *lua.State) int {
 		result = math.Pow(float64(v1.Int()), float64(v2.Int()))
 	case reflect.Float64:
 		result = math.Pow(valueToNumber(L, v1), valueToNumber(L, v2))
+	case reflect.Complex128:
+		result = cmplx.Pow(valueToComplex(L, v1), valueToComplex(L, v2))
 	}
 	pushNumberValue(L, result, t1, t2)
 	return 1
@@ -670,10 +714,14 @@ func number__unm(L *lua.State) int {
 		result = -v1.Int()
 	case reflect.Float64, reflect.String:
 		result = -valueToNumber(L, v1)
+	case reflect.Complex128:
+		result = -v1.Complex()
 	}
 	v := reflect.ValueOf(result)
-	if predeclaredScalarType(t1) != nil {
-		makeValueProxy(L, v1, cNumberMeta)
+	if unsizedKind(v1) == reflect.Complex128 {
+		makeValueProxy(L, v.Convert(t1), cComplexMeta)
+	} else if predeclaredScalarType(t1) != nil {
+		makeValueProxy(L, v.Convert(t1), cNumberMeta)
 	} else {
 		L.PushNumber(v.Float())
 	}
@@ -701,12 +749,10 @@ func string__concat(L *lua.State) int {
 	s2 := valueToString(L, v2)
 	result := s1 + s2
 
-	stringType := reflect.TypeOf("")
-	floatType := reflect.TypeOf(0.0)
-	if t1 == t2 || t2 == floatType || t2 == stringType {
+	if t1 == t2 || isPredeclaredType(t2) {
 		v := reflect.ValueOf(result)
 		makeValueProxy(L, v.Convert(t1), cStringMeta)
-	} else if t1 == floatType || t1 == stringType {
+	} else if isPredeclaredType(t1) {
 		v := reflect.ValueOf(result)
 		makeValueProxy(L, v.Convert(t2), cStringMeta)
 	} else {

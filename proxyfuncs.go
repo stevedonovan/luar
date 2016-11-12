@@ -13,6 +13,40 @@ func ArrayToTable(L *lua.State) int {
 	return CopyArrayToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
+// Complex defines 'luar.complex' when 'Init' is called.
+// It is the equivalent of Go's 'complex' function.
+func Complex(L *lua.State) int {
+	v1, _ := valueOfProxyOrScalar(L, 1)
+	v2, _ := valueOfProxyOrScalar(L, 2)
+	result := complex(valueToNumber(L, v1), valueToNumber(L, v2))
+	makeValueProxy(L, reflect.ValueOf(result), cComplexMeta)
+	return 1
+}
+
+// ComplexReal defines 'luar.real' when 'Init' is called.
+// It is the equivalent of Go's 'real' function.
+func ComplexReal(L *lua.State) int {
+	v := mustUnwrapProxy(L, 1)
+	val := reflect.ValueOf(v)
+	if unsizedKind(val) != reflect.Complex128 {
+		RaiseError(L, "not a complex")
+	}
+	L.PushNumber(real(val.Complex()))
+	return 1
+}
+
+// ComplexImag defines 'luar.imag' when 'Init' is called.
+// It is the equivalent of Go's 'imag' function.
+func ComplexImag(L *lua.State) int {
+	v := mustUnwrapProxy(L, 1)
+	val := reflect.ValueOf(v)
+	if unsizedKind(val) != reflect.Complex128 {
+		RaiseError(L, "not a complex")
+	}
+	L.PushNumber(imag(val.Complex()))
+	return 1
+}
+
 // TODO: What is this for?
 func MakeChannel(L *lua.State) int {
 	ch := make(chan interface{})

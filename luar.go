@@ -504,6 +504,8 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		} else {
 			L.PushBoolean(val.Bool())
 		}
+	case reflect.Complex128, reflect.Complex64:
+		makeValueProxy(L, ptrVal, cComplexMeta)
 	case reflect.Array:
 		// It needs be a pointer to be a proxy, otherwise values won't be settable.
 		if !dontproxify && ptrVal.Kind() == reflect.Ptr {
@@ -1171,6 +1173,9 @@ func Init() *lua.State {
 		"sub":          SliceSub,
 		"append":       SliceAppend,
 		"raw":          ProxyRaw,
+		"complex":      Complex,
+		"real":         ComplexReal,
+		"imag":         ComplexImag,
 		// Values.
 		"null": Null,
 	})
