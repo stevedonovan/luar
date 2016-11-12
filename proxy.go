@@ -224,13 +224,14 @@ func InitProxies(L *lua.State) {
 	flagValue()
 }
 
+// From Lua's specs: "A metamethod only is selected when both objects being
+// compared have the same type and the same metamethod for the selected
+// operation." Thus both arguments must be proxies for this function to be
+// called. No need to check for type equality: Go's "==" operator will do it for
+// us.
 func proxy__eq(L *lua.State) int {
-	// TODO: The two values are not necessarily proxies, are they?
-	v1, t1 := valueOfProxy(L, 1)
-	v2, t2 := valueOfProxy(L, 2)
-	if t1 != t2 {
-		RaiseError(L, fmt.Sprintf("mismatched types %s and %s", t1, t2))
-	}
+	v1, _ := valueOfProxy(L, 1)
+	v2, _ := valueOfProxy(L, 2)
 	L.PushBoolean(v1.Interface() == v2.Interface())
 	return 1
 }
