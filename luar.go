@@ -1169,6 +1169,7 @@ func Init() *lua.State {
 		"slice2table":  SliceToTable,
 		"array2table":  ArrayToTable,
 		"struct2table": StructToTable,
+		"method":       ProxyMethod,
 		"map":          MakeMap,
 		"slice":        MakeSlice,
 		"type":         ProxyType,

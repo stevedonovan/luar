@@ -74,7 +74,21 @@ func MapToTable(L *lua.State) int {
 	return CopyMapToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
-// ProxyRaw defines 'luar.raw' when 'Init' is called.
+// ProxyMethod pushes the proxy method on the stack.
+func ProxyMethod(L *lua.State) int {
+	st := mustUnwrapProxy(L, 1)
+	if st == nil {
+		L.PushNil()
+		return 1
+	}
+	val := reflect.ValueOf(st)
+	name := L.ToString(2)
+	pushGoMethod(L, name, val)
+	return 1
+}
+
+// ProxyRaw unproxifies a value.
+// It defines 'luar.raw' when 'Init' is called.
 func ProxyRaw(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
 	val := reflect.ValueOf(v)

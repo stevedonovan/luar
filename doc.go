@@ -14,7 +14,8 @@ using _dot-notation_ rather than colon notation.
 Slices, maps and structs can be copied as tables, or alternatively passed over
 as Lua proxy objects which can be naturally indexed.
 
-In the case of structs and string maps, fields have priority over methods.
+In the case of structs and string maps, fields have priority over methods. To
+call shadowed methods, use 'luar.method(<value>, <method>)(<params>...)'.
 
 Unexported struct fields are ignored. The "lua" tag is used to match fields in
 struct conversion.

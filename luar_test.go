@@ -440,14 +440,18 @@ func TestMapMethod(t *testing.T) {
 	defer L.Close()
 
 	a := myMap{"foo": 17, "bar": 170}
+	b := myMap{"Foo": 17}
 
 	Register(L, "", Map{
 		"a": a,
+		"b": b,
 	})
 
 	const code = `
 assert(a.Foo() == 2)
 assert(a.foo == 17)
+assert(b.Foo == 17)
+assert(luar.method(b, "Foo")() == 1)
 `
 
 	err := L.DoString(code)

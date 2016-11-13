@@ -96,7 +96,7 @@ func mustUnwrapProxy(L *lua.State, idx int) interface{} {
 	return v.Interface()
 }
 
-func callGoMethod(L *lua.State, name string, st reflect.Value) {
+func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 	ret := st.MethodByName(name)
 	if !ret.IsValid() {
 		T := st.Type()
@@ -289,7 +289,7 @@ func slice__index(L *lua.State) int {
 		GoToLua(L, nil, ret, false)
 	} else if L.IsString(2) {
 		name := L.ToString(2)
-		callGoMethod(L, name, slice)
+		pushGoMethod(L, name, slice)
 	} else {
 		RaiseError(L, "slice/array requires integer index")
 	}
@@ -457,7 +457,7 @@ func struct__index(L *lua.State) int {
 	ret := est.FieldByName(name)
 	if !ret.IsValid() || !ret.CanSet() {
 		// No such exported field, try for method.
-		callGoMethod(L, name, st)
+		pushGoMethod(L, name, st)
 	} else {
 		if isPointerToPrimitive(ret) {
 			GoToLua(L, nil, ret.Elem(), false)
@@ -471,7 +471,7 @@ func struct__index(L *lua.State) int {
 func interface__index(L *lua.State) int {
 	st, _ := valueOfProxy(L, 1)
 	name := L.ToString(2)
-	callGoMethod(L, name, st)
+	pushGoMethod(L, name, st)
 	return 1
 }
 
