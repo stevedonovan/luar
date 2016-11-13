@@ -445,6 +445,8 @@ func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) 
 	v.close()
 }
 
+// TODO: Check if we really need multiple pointer levels since pointer methods
+// can be called on non-pointers.
 func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, visited visitor) {
 	if !val.IsValid() {
 		L.PushNil()
