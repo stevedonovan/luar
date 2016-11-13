@@ -1167,20 +1167,27 @@ func Init() *lua.State {
 	_ = L.DoString(LuarSetup) // Never fails.
 	RawRegister(L, "luar", Map{
 		// Functions.
-		"map2table":    MapToTable,
-		"slice2table":  SliceToTable,
-		"array2table":  ArrayToTable,
-		"struct2table": StructToTable,
-		"method":       ProxyMethod,
-		"map":          MakeMap,
-		"slice":        MakeSlice,
-		"type":         ProxyType,
-		"sub":          SliceSub,
-		"append":       SliceAppend,
-		"raw":          ProxyRaw,
-		"complex":      Complex,
-		"real":         ComplexReal,
-		"imag":         ComplexImag,
+		"unproxify":    Unproxify,
+		"map2table":    MapToTable,    // deprecated
+		"slice2table":  SliceToTable,  // deprecated
+		"array2table":  ArrayToTable,  // deprecated
+		"struct2table": StructToTable, // deprecated
+		"raw":          ProxyRaw,      // deprecated
+
+		"method": ProxyMethod,
+		"type":   ProxyType, // TODO: Replace with the version from the 'proxytype' branch.
+
+		"chan":    MakeChan,
+		"complex": Complex,
+		"map":     MakeMap,
+		"slice":   MakeSlice,
+
+		"real": ComplexReal, // deprecated
+		"imag": ComplexImag, // deprecated
+
+		"sub":    SliceSub,    // deprecated
+		"append": SliceAppend, // deprecated
+
 		// Values.
 		"null": Null,
 	})

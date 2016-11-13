@@ -144,3 +144,8 @@ func SliceToTable(L *lua.State) int {
 func StructToTable(L *lua.State) int {
 	return CopyStructToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
+
+func Unproxify(L *lua.State) int {
+	GoToLua(L, nil, reflect.ValueOf(mustUnwrapProxy(L, 1)), true)
+	return 1
+}
