@@ -420,13 +420,17 @@ func TestSliceMethod(t *testing.T) {
 	const code = `
 assert(a.Foo() == 2)
 assert(a[1] == 17)
+a = a.append(18.5, 19)
+a = a.append(unpack({3, 2}))
+sub = a.sub(3, 4)
+assert(sub[1] == 18)
+assert(sub[2] == 19)
 `
 
 	err := L.DoString(code)
 	if err != nil {
 		t.Error(err)
 	}
-
 }
 
 type myMap map[string]int

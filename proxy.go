@@ -182,8 +182,7 @@ func InitProxies(L *lua.State) {
 	flagValue()
 
 	L.NewMetaTable(cStringMeta)
-	// TODO: String indexing?
-	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__index", string__index)
 	L.SetMetaMethod("__len", string__len)
 	L.SetMetaMethod("__lt", string__lt)
 	L.SetMetaMethod("__concat", string__concat)
@@ -289,7 +288,37 @@ func slice__index(L *lua.State) int {
 		GoToLua(L, nil, ret, false)
 	} else if L.IsString(2) {
 		name := L.ToString(2)
-		pushGoMethod(L, name, slice)
+		if slice.Kind() == reflect.Array {
+			pushGoMethod(L, name, slice)
+			return 1
+		}
+		switch name {
+		case "append":
+			f := func(L *lua.State) int {
+				narg := L.GetTop()
+				args := []reflect.Value{}
+				for i := 1; i <= narg; i++ {
+					elem := reflect.ValueOf(LuaToGo(L, slice.Type().Elem(), i))
+					args = append(args, elem)
+				}
+				newslice := reflect.Append(slice, args...)
+				makeValueProxy(L, newslice, cSliceMeta)
+				return 1
+			}
+			L.PushGoFunction(f)
+		case "cap":
+			L.PushInteger(int64(slice.Cap()))
+		case "sub":
+			f := func(L *lua.State) int {
+				i1, i2 := L.ToInteger(1), L.ToInteger(2)
+				newslice := slice.Slice(i1-1, i2)
+				makeValueProxy(L, newslice, cSliceMeta)
+				return 1
+			}
+			L.PushGoFunction(f)
+		default:
+			pushGoMethod(L, name, slice)
+		}
 	} else {
 		RaiseError(L, "slice/array requires integer index")
 	}
@@ -772,6 +801,24 @@ func complex__index(L *lua.State) int {
 	case "imag":
 		L.PushNumber(imag(v.Complex()))
 	default:
+		pushGoMethod(L, name, v)
+	}
+	return 1
+}
+
+func string__index(L *lua.State) int {
+	v, _ := valueOfProxy(L, 1)
+	name := L.ToString(2)
+	if name == "sub" {
+		f := func(L *lua.State) int {
+			i1, i2 := L.ToInteger(1), L.ToInteger(2)
+			vn := v.Slice(i1-1, i2)
+			makeValueProxy(L, vn, cStringMeta)
+			return 1
+		}
+		L.PushGoFunction(f)
+
+	} else {
 		pushGoMethod(L, name, v)
 	}
 	return 1
