@@ -1,6 +1,8 @@
-/* A golua REPL with line editing, pretty-printing and tab completion.
-   Import any Go functions and values into Lua and play with them
-   interactively!
+/*
+A golua REPL with line editing, pretty-printing and tab completion.
+
+Import any Go functions and values into Lua and play with them
+interactively!
 */
 package main
 
