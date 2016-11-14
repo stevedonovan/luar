@@ -37,5 +37,46 @@ rules are as follows:
 - If the types are different and not Lua numbers, convert to complex128 (proxy),
 Lua number, or Lua string according to the result kind.
 
+
+Channel
+
+Channel proxies can be manipulated with the following methods:
+
+- close(): Close the channel.
+
+- recv() value: Fetch and return a value from the channel.
+
+- send(x value): Send a value in the channel.
+
+
+Complex numbers
+
+Complex proxies can be manipulated with the following attributes:
+
+- real: The real part.
+
+- imag: The imaginary part.
+
+
+Slices
+
+Slice proxies can be manipulated with the following methods/attributes:
+
+- append(x ...value) sliceProxy: Append the elements and return the new
+slice. The elements must be convertible to the slice element type.
+
+- cap: The capacity of the slice.
+
+- sub(i, j integer) sliceProxy: Return the sub-slice that ranges from 'i' to 'j'
+included. This matches Lua's behaviour, but not Go's.
+
+
+Strings
+
+String proxies can be manipulated with the following method:
+
+- sub(i, j integer) sliceProxy: Return the sub-string that ranges from 'i' to
+'j' included. This matches Lua's behaviour, but not Go's.
+
 */
 package luar
