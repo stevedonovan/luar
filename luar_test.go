@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -204,6 +205,49 @@ assert(z == luar.complex(-0.25, -0.375))
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+func TestChan(t *testing.T) {
+	L1 := Init()
+	defer L1.Close()
+	L2 := Init()
+	defer L2.Close()
+
+	c := make(chan int)
+
+	Register(L1, "", Map{
+		"c": c,
+	})
+
+	Register(L2, "", Map{
+		"c": c,
+	})
+
+	const code1 = `
+c.send(17)
+`
+
+	const code2 = `
+v = c.recv()
+assert(v == 17)
+`
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		err := L1.DoString(code1)
+		if err != nil {
+			t.Error(err)
+		}
+		wg.Done()
+	}()
+
+	err := L2.DoString(code2)
+	if err != nil {
+		t.Error(err)
+	}
+
+	wg.Wait()
 }
 
 func TestNamespace(t *testing.T) {

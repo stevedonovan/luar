@@ -49,9 +49,11 @@ func ComplexImag(L *lua.State) int {
 	return 1
 }
 
-// TODO: What is this for?
-func MakeChannel(L *lua.State) int {
-	ch := make(chan interface{})
+// MakeChan creates a 'chan interface{}' proxy and pushes it on the stack.
+// Init() registers it as 'luar.chan'.
+func MakeChan(L *lua.State) int {
+	n := L.OptInteger(1, 0)
+	ch := make(chan interface{}, n)
 	makeValueProxy(L, reflect.ValueOf(ch), cChannelMeta)
 	return 1
 }

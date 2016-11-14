@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"sync"
 
 	"github.com/aarzilli/golua/lua"
 	"github.com/stevedonovan/luar"
@@ -498,4 +499,48 @@ func ExampleRegister_sandbox() {
 	// foo
 	// true
 	// true
+}
+
+func ExampleMakeChan() {
+	L1 := luar.Init()
+	defer L1.Close()
+	L2 := luar.Init()
+	defer L2.Close()
+
+	luar.MakeChan(L1)
+	L1.SetGlobal("c")
+	L1.GetGlobal("c")
+	c := luar.LuaToGo(L1, nil, -1)
+
+	luar.Register(L2, "", luar.Map{
+		"c":     c,
+		"Print": fmt.Println,
+	})
+
+	const code1 = `
+c.send(17)
+`
+
+	const code2 = `
+v = c.recv()
+Print(v)
+`
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		err := L1.DoString(code1)
+		if err != nil {
+			fmt.Println(err)
+		}
+		wg.Done()
+	}()
+
+	err := L2.DoString(code2)
+	if err != nil {
+		fmt.Println(err)
+	}
+	wg.Wait()
+	// Output:
+	// 17
 }

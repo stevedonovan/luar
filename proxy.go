@@ -116,35 +116,6 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 	L.PushGoFunction(GoLuaFunc(L, ret))
 }
 
-// TODO: What is this for?
-func GoLua(L *lua.State) int {
-	go func() {
-		LT := L.NewThread()
-		L.PushValue(1)
-		lua.XMove(L, LT, 1)
-		res := LT.Resume(0)
-		for res != 0 {
-			if res == 2 {
-				emsg := LT.ToString(-1)
-				RaiseError(LT, emsg)
-			}
-			ch, t := valueOfProxy(LT, -2)
-
-			if LT.ToBoolean(-1) { // send on a channel
-				val := reflect.ValueOf(LuaToGo(LT, t.Elem(), -3))
-				ch.Send(val)
-				res = LT.Resume(0)
-			} else { // receive on a channel
-				val, ok := ch.Recv()
-				GoToLua(LT, t.Elem(), val, false)
-				LT.PushBoolean(ok)
-				res = LT.Resume(2)
-			}
-		}
-	}()
-	return 0
-}
-
 // InitProxies sets up a Lua state for using Go<->Lua proxies.
 // This need not be called if the Lua state was created with Init().
 // This function is useful if you want to set up your Lua state manually, e.g.
@@ -214,12 +185,7 @@ func InitProxies(L *lua.State) {
 	flagValue()
 
 	L.NewMetaTable(cChannelMeta)
-	L.NewTable()
-	L.PushGoFunction(channel_send)
-	L.SetField(-2, "Send")
-	L.PushGoFunction(channel_recv)
-	L.SetField(-2, "Recv")
-	L.SetField(-2, "__index")
+	L.SetMetaMethod("__index", channel__index)
 	flagValue()
 }
 
@@ -247,30 +213,6 @@ func proxy__tostring(L *lua.State) int {
 	obj, _ := valueOfProxy(L, 1)
 	L.PushString(fmt.Sprintf("%v", obj))
 	return 1
-}
-
-func channel_send(L *lua.State) int {
-	L.PushValue(2)
-	L.PushValue(1)
-	L.PushBoolean(true)
-	return L.Yield(3)
-	//~ ch,t := valueOfProxy(L,1)
-	//~ val := reflect.ValueOf(LuaToGo(L, t.Elem(),2))
-	//~ ch.Send(val)
-	//~ return 0
-}
-
-func channel_recv(L *lua.State) int {
-	L.PushValue(1)
-	L.PushBoolean(false)
-	return L.Yield(2)
-	//~ ch,t := valueOfProxy(L,1)
-	//~ L.Yield(0)
-	//~ val,ok := ch.Recv()
-	//~ GoToLua(L,t.Elem(),val)
-	//~ L.PushBoolean(ok)
-	//~ L.Resume(0)
-	//~ return 2
 }
 
 func slice__index(L *lua.State) int {
@@ -800,6 +742,40 @@ func complex__index(L *lua.State) int {
 		L.PushNumber(real(v.Complex()))
 	case "imag":
 		L.PushNumber(imag(v.Complex()))
+	default:
+		pushGoMethod(L, name, v)
+	}
+	return 1
+}
+
+func channel__index(L *lua.State) int {
+	v, t := valueOfProxy(L, 1)
+	name := L.ToString(2)
+	switch name {
+	case "recv":
+		f := func(L *lua.State) int {
+			val, ok := v.Recv()
+			if ok {
+				GoToLua(L, nil, val, false)
+			} else {
+				L.PushNil()
+			}
+			return 1
+		}
+		L.PushGoFunction(f)
+	case "send":
+		f := func(L *lua.State) int {
+			val := reflect.ValueOf(LuaToGo(L, t.Elem(), 1))
+			v.Send(val)
+			return 0
+		}
+		L.PushGoFunction(f)
+	case "close":
+		f := func(L *lua.State) int {
+			v.Close()
+			return 0
+		}
+		L.PushGoFunction(f)
 	default:
 		pushGoMethod(L, name, v)
 	}

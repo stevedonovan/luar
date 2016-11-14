@@ -558,6 +558,8 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 			}
 			copyStructToTable(L, ptrVal, visited)
 		}
+	case reflect.Chan:
+		makeValueProxy(L, ptrVal, cChannelMeta)
 	default:
 		if v, ok := val.Interface().(error); ok {
 			L.PushString(v.Error())
