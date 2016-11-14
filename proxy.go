@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
-	"unsafe"
 
 	"github.com/aarzilli/golua/lua"
 )
@@ -37,7 +36,7 @@ func isPointerToPrimitive(v reflect.Value) bool {
 }
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
-	rawptr := L.NewUserdata(unsafe.Sizeof(valueProxy{}))
+	rawptr := L.NewUserdata(typeof((*valueProxy)(nil)).Size())
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
 	ptr.t = val.Type()
