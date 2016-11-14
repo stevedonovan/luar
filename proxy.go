@@ -172,7 +172,7 @@ func InitProxies(L *lua.State) {
 	flagValue()
 
 	L.NewMetaTable(cComplexMeta)
-	L.SetMetaMethod("__index", interface__index)
+	L.SetMetaMethod("__index", complex__index)
 	L.SetMetaMethod("__add", number__add)
 	L.SetMetaMethod("__sub", number__sub)
 	L.SetMetaMethod("__mul", number__mul)
@@ -760,5 +760,19 @@ func string__concat(L *lua.State) int {
 		L.PushString(result)
 	}
 
+	return 1
+}
+
+func complex__index(L *lua.State) int {
+	v, _ := valueOfProxy(L, 1)
+	name := L.ToString(2)
+	switch name {
+	case "real":
+		L.PushNumber(real(v.Complex()))
+	case "imag":
+		L.PushNumber(imag(v.Complex()))
+	default:
+		pushGoMethod(L, name, v)
+	}
 	return 1
 }

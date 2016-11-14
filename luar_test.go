@@ -187,8 +187,8 @@ func TestComplex(t *testing.T) {
 
 	const code = `
 assert(c == luar.complex(2, 3))
-assert(luar.real(c) == 2)
-assert(luar.imag(c) == 3)
+assert(c.real == 2)
+assert(c.imag == 3)
 c = c+c
 assert(c == luar.complex(4, 6))
 c = -c

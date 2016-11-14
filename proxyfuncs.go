@@ -13,8 +13,8 @@ func ArrayToTable(L *lua.State) int {
 	return CopyArrayToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
-// Complex defines 'luar.complex' when 'Init' is called.
-// It is the equivalent of Go's 'complex' function.
+// Complex pushes a proxy to a Go complex on the stack.
+// It defines 'luar.complex' when 'Init' is called.
 func Complex(L *lua.State) int {
 	v1, _ := valueOfProxyOrScalar(L, 1)
 	v2, _ := valueOfProxyOrScalar(L, 2)
@@ -25,6 +25,7 @@ func Complex(L *lua.State) int {
 
 // ComplexReal defines 'luar.real' when 'Init' is called.
 // It is the equivalent of Go's 'real' function.
+// WARNING: Deprecated, use the 'real' index instead.
 func ComplexReal(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
 	val := reflect.ValueOf(v)
@@ -37,6 +38,7 @@ func ComplexReal(L *lua.State) int {
 
 // ComplexImag defines 'luar.imag' when 'Init' is called.
 // It is the equivalent of Go's 'imag' function.
+// WARNING: Deprecated, use the 'imag' index instead.
 func ComplexImag(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
 	val := reflect.ValueOf(v)
