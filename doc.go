@@ -1,21 +1,22 @@
 /*
-Package luar provides a convenient way to access Lua from Go.
+Package luar provides a convenient interface between Lua and Go.
 
 It uses Alessandro Arzilli's golua (https://github.com/aarzilli/golua).
 
 Most Go values can be passed to Lua: basic types, strings, complex numbers,
 user-defined types, pointers, composite types, functions, channels, etc.
+Conversely, most Lua values can be converted to Go values.
 
 Composite types are processed recursively.
 
-Methods can be called on user-defined types. That these methods will be callable
+Methods can be called on user-defined types. These methods will be callable
 using _dot-notation_ rather than colon notation.
 
-Slices, maps and structs can be copied as tables, or alternatively passed over
-as Lua proxy objects which can be naturally indexed.
+Arrays, slices, maps and structs can be copied as tables, or alternatively
+passed over as Lua proxy objects which can be naturally indexed.
 
-In the case of structs and string maps, fields have priority over methods. To
-call shadowed methods, use 'luar.method(<value>, <method>)(<params>...)'.
+In the case of structs and string maps, fields have priority over methods. Use
+'luar.method(<value>, <method>)(<params>...)' to call shadowed methods.
 
 Unexported struct fields are ignored. The "lua" tag is used to match fields in
 struct conversion.
@@ -34,11 +35,11 @@ rules are as follows:
 
 - If one type is a Lua number, use the other, user-defined type.
 
-- If the types are different and not Lua numbers, convert to complex128 (proxy),
-Lua number, or Lua string according to the result kind.
+- If the types are different and not Lua numbers, convert to a complex proxy, a
+Lua number, or a Lua string according to the result kind.
 
 
-Channel
+Channels
 
 Channel proxies can be manipulated with the following methods:
 
@@ -72,6 +73,9 @@ included. This matches Lua's behaviour, but not Go's.
 
 
 Strings
+
+String proxies can be browsed rune by rune with the pairs/ipairs functions.
+These runes are encoded as strings in Lua.
 
 String proxies can be manipulated with the following method:
 

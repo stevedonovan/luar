@@ -127,6 +127,7 @@ const config = `return {
 }`
 
 // Read configuration in Lua format.
+//
 // WARNING: Deprecated.
 func ExampleCopyTableToMap() {
 	L := luar.Init()

@@ -9,13 +9,17 @@ import (
 )
 
 // ArrayToTable defines 'luar.array2table' when 'Init' is called.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use luar.unproxify instead.
 func ArrayToTable(L *lua.State) int {
 	return CopyArrayToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // Complex pushes a proxy to a Go complex on the stack.
-// Init() registers it as 'luar.complex(real, imag number)'.
+//
+// Arguments: real (number), imag (number)
+//
+// Returns: proxy (complex128)
 func Complex(L *lua.State) int {
 	v1, _ := luaToGoValue(L, 1)
 	v2, _ := luaToGoValue(L, 2)
@@ -26,6 +30,7 @@ func Complex(L *lua.State) int {
 
 // ComplexReal defines 'luar.real' when 'Init' is called.
 // It is the equivalent of Go's 'real' function.
+//
 // WARNING: Deprecated, use the 'real' index instead.
 func ComplexReal(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
@@ -39,6 +44,7 @@ func ComplexReal(L *lua.State) int {
 
 // ComplexImag defines 'luar.imag' when 'Init' is called.
 // It is the equivalent of Go's 'imag' function.
+//
 // WARNING: Deprecated, use the 'imag' index instead.
 func ComplexImag(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
@@ -51,7 +57,10 @@ func ComplexImag(L *lua.State) int {
 }
 
 // MakeChan creates a 'chan interface{}' proxy and pushes it on the stack.
-// Init() registers it as 'luar.chan'.
+//
+// Optional argument: size (number)
+//
+// Returns: proxy (chan interface{})
 func MakeChan(L *lua.State) int {
 	n := L.OptInteger(1, 0)
 	ch := make(chan interface{}, n)
@@ -60,7 +69,8 @@ func MakeChan(L *lua.State) int {
 }
 
 // MakeMap creates a 'map[string]interface{}' proxy and pushes it on the stack.
-// Init() registers it as 'luar.map'.
+//
+// Returns: proxy (map[string]interface{})
 func MakeMap(L *lua.State) int {
 	m := reflect.MakeMap(tmap)
 	makeValueProxy(L, m, cMapMeta)
@@ -68,7 +78,10 @@ func MakeMap(L *lua.State) int {
 }
 
 // MakeSlice creates a '[]interface{}' proxy and pushes it on the stack.
-// Init() registers it as 'luar.slice'.
+//
+// Optional argument: size (number)
+//
+// Returns: proxy ([]interface{})
 func MakeSlice(L *lua.State) int {
 	n := L.OptInteger(1, 0)
 	s := reflect.MakeSlice(tslice, n, n+1)
@@ -77,12 +90,17 @@ func MakeSlice(L *lua.State) int {
 }
 
 // MapToTable defines 'luar.map2table' when 'Init' is called.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use luar.unproxify instead.
 func MapToTable(L *lua.State) int {
 	return CopyMapToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // ProxyMethod pushes the proxy method on the stack.
+//
+// Argument: proxy
+//
+// Returns: method (function)
 func ProxyMethod(L *lua.State) int {
 	if !isValueProxy(L, 1) {
 		L.PushNil()
@@ -95,7 +113,8 @@ func ProxyMethod(L *lua.State) int {
 }
 
 // ProxyRaw unproxifies a value.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use luar.unproxify instead.
 func ProxyRaw(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
 	val := reflect.ValueOf(v)
@@ -109,8 +128,11 @@ func ProxyRaw(L *lua.State) int {
 	return 1
 }
 
-// ProxyType returns the type of the value behind the proxy.
-// Init() registers it as 'luar.type'.
+// ProxyType pushes the proxy type on the stack.
+//
+// Argument: proxy
+//
+// Returns: type (string)
 func ProxyType(L *lua.State) int {
 	if !isValueProxy(L, 1) {
 		L.PushNil()
@@ -126,7 +148,8 @@ func ProxyType(L *lua.State) int {
 }
 
 // SliceAppend defines 'luar.append' when 'Init' is called.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use the 'append' method instead.
 func SliceAppend(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	val := reflect.ValueOf(LuaToGo(L, nil, 2))
@@ -136,7 +159,8 @@ func SliceAppend(L *lua.State) int {
 }
 
 // SliceSub defines 'luar.sub' when 'Init' is called.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use the 'sub' method instead.
 func SliceSub(L *lua.State) int {
 	slice, _ := valueOfProxy(L, 1)
 	i1, i2 := L.ToInteger(2), L.ToInteger(3)
@@ -146,18 +170,24 @@ func SliceSub(L *lua.State) int {
 }
 
 // SliceToTable defines 'luar.slice2table' when 'Init' is called.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use luar.unproxify instead.
 func SliceToTable(L *lua.State) int {
 	return CopySliceToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // StructToTable defines 'luar.struct2table' when 'Init' is called.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use luar.unproxify instead.
 func StructToTable(L *lua.State) int {
 	return CopyStructToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
 // Unproxify converts a proxy to an unproxified Lua value.
+//
+// Argument: proxy
+//
+// Returns: value (Lua value)
 func Unproxify(L *lua.State) int {
 	if !isValueProxy(L, 1) {
 		L.PushNil()

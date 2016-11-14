@@ -52,6 +52,8 @@ func isNil(val reflect.Value) bool {
 
 // CopyTableToSlice returns the Lua table at 'idx' as a copied Go slice.
 // If 't' is nil then the slice type is []interface{}
+//
+// WARNING: Deprecated, use LuaToGo instead.
 func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
 	return copyTableToSlice(L, t, idx, map[uintptr]interface{}{})
 }
@@ -120,7 +122,8 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 
 // CopyTableToMap returns the Lua table at 'idx' as a copied Go map.
 // If 't' is nil then the map type is map[string]interface{}.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use LuaToGo instead.
 func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	return copyTableToMap(L, t, idx, map[uintptr]interface{}{})
 }
@@ -158,7 +161,8 @@ func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]i
 // CopyTableToStruct copies matching Lua table entries to a struct, given the
 // struct type and the index on the Lua stack. Use the "lua" tag to set field
 // names.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use LuaToGo instead.
 func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	return copyTableToStruct(L, t, idx, map[uintptr]interface{}{})
 }
@@ -219,7 +223,8 @@ func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintpt
 
 // CopySliceToTable copies a Go slice to a Lua table.
 // 'nil' is represented as 'luar.null'.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use GoToLua instead.
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -228,7 +233,8 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 
 // CopyArrayToTable copies a Go array to a Lua table.
 // 'nil' is represented as 'luar.null'.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use GoToLua instead.
 func CopyArrayToTable(L *lua.State, v reflect.Value) int {
 	visitor := newVisitor(L)
 	defer visitor.close()
@@ -271,7 +277,8 @@ func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 // CopyStructToTable copies a Go struct to a Lua table.
 // 'nil' is represented as 'luar.null'.
 // Use the "lua" tag to set field names.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use GoToLua instead.
 func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -313,7 +320,8 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int
 }
 
 // CopyMapToTable copies a Go map to a Lua table.
-// WARNING: Deprecated.
+//
+// WARNING: Deprecated, use GoToLua instead.
 func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -573,9 +581,10 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 	}
 }
 
-// LuaToGo converts a Lua value 'idx' on the stack to the Go value of desired type 't'.
+// LuaToGo converts the Lua value at index 'idx' to the Go value of desired type 't'.
 // Handles numerical and string types in a straightforward way, and will convert
 // tables to either map or slice types.
+// If 't' is nil or an interface, the type is inferred from the Lua value.
 func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
 	return luaToGo(L, t, idx, map[uintptr]interface{}{})
 }
@@ -584,10 +593,11 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 	var value interface{}
 
 	var kind reflect.Kind
-	if t != nil { // let the Lua type drive the conversion...
+	if t != nil {
 		if t.Kind() == reflect.Ptr {
 			kind = t.Elem().Kind()
 		} else if t.Kind() == reflect.Interface {
+			// Let the Lua type drive the conversion.
 			t = nil
 		} else {
 			kind = t.Kind()
@@ -793,6 +803,7 @@ func valueOfNil(ival interface{}) reflect.Value {
 // strings, and doubles to doubles, but otherwise Go reflection is used to
 // provide a generic wrapper function.
 func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
+	// TODO: Merge in GoToLua and deprecate this + RawRegister.
 	switch f := fun.(type) {
 	case func(*lua.State) int:
 		return f
@@ -918,9 +929,14 @@ func RawRegister(L *lua.State, table string, values Map) {
 }
 
 // Register makes a number of Go functions or values available in Lua code.
-// If table is non-nil, then create or reuse a global table of that name and put
-// the values in it. If table is '*' then assume that the table is already on
-// the stack. values is a map of strings to Go values.
+// 'values' is a map of strings to Go values.
+//
+// - If table is non-nil, then create or reuse a global table of that name and
+// put the values in it.
+//
+// - If table is '' then put the values in the global table (_G).
+//
+// - If table is '*' then assume that the table is already on the stack.
 func Register(L *lua.State, table string, values Map) {
 	register(L, table, values, true)
 }
@@ -1156,20 +1172,18 @@ end
 // for using the 'GoToLua' and 'LuaToGo' functions; it is needed for proxy
 // conversions however.
 //
-// It populates the 'luar' table with the following functions:
+// It populates the 'luar' table with the following:
 //
-//   method(p proxy, n methodName) function
-//   type(p proxy) string
-//   unproxify(p proxy) table
+//   method: ProxyMethod
+//   type: ProxyType
+//   unproxify: Unproxify
 //
-//   chan() proxy<chan interface{}>
-//   complex(real number, imag number) proxy
-//   map() proxy<map[string]interface{}>
-//   slice() proxy<[]interface{}>
+//   chan: MakeChan
+//   complex: MakeComplex
+//   map: MakeMap
+//   slice: MakeSlice
 //
-// and values:
-//
-//   null
+//   null: Null
 //
 // This replaces the pairs/ipairs functions so that __pairs/__ipairs
 // can be used, Lua 5.2 style.
