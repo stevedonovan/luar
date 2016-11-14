@@ -17,8 +17,8 @@ func ArrayToTable(L *lua.State) int {
 // Complex pushes a proxy to a Go complex on the stack.
 // Init() registers it as 'luar.complex(real, imag number)'.
 func Complex(L *lua.State) int {
-	v1, _ := valueOfProxyOrScalar(L, 1)
-	v2, _ := valueOfProxyOrScalar(L, 2)
+	v1, _ := luaToGoValue(L, 1)
+	v2, _ := luaToGoValue(L, 2)
 	result := complex(valueToNumber(L, v1), valueToNumber(L, v2))
 	makeValueProxy(L, reflect.ValueOf(result), cComplexMeta)
 	return 1
@@ -84,19 +84,17 @@ func MapToTable(L *lua.State) int {
 
 // ProxyMethod pushes the proxy method on the stack.
 func ProxyMethod(L *lua.State) int {
-	st := mustUnwrapProxy(L, 1)
-	if st == nil {
+	if !isValueProxy(L, 1) {
 		L.PushNil()
 		return 1
 	}
-	val := reflect.ValueOf(st)
+	v, _ := valueOfProxy(L, 1)
 	name := L.ToString(2)
-	pushGoMethod(L, name, val)
+	pushGoMethod(L, name, v)
 	return 1
 }
 
 // ProxyRaw unproxifies a value.
-// Init() registers it as 'luar.raw'.
 // WARNING: Deprecated.
 func ProxyRaw(L *lua.State) int {
 	v := mustUnwrapProxy(L, 1)
@@ -114,12 +112,16 @@ func ProxyRaw(L *lua.State) int {
 // ProxyType returns the type of the value behind the proxy.
 // Init() registers it as 'luar.type'.
 func ProxyType(L *lua.State) int {
-	v := mustUnwrapProxy(L, 1)
-	if v != nil {
-		GoToLua(L, nil, reflect.ValueOf(reflect.TypeOf(v)), false)
-	} else {
+	if !isValueProxy(L, 1) {
 		L.PushNil()
+		return 1
 	}
+	v, _ := valueOfProxy(L, 1)
+	if v.Interface() == nil {
+		L.PushNil()
+		return 1
+	}
+	GoToLua(L, nil, reflect.ValueOf(v.Type()), false)
 	return 1
 }
 
@@ -155,7 +157,13 @@ func StructToTable(L *lua.State) int {
 	return CopyStructToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
+// Unproxify converts a proxy to an unproxified Lua value.
 func Unproxify(L *lua.State) int {
-	GoToLua(L, nil, reflect.ValueOf(mustUnwrapProxy(L, 1)), true)
+	if !isValueProxy(L, 1) {
+		L.PushNil()
+		return 1
+	}
+	v, _ := valueOfProxy(L, 1)
+	GoToLua(L, nil, v, true)
 	return 1
 }

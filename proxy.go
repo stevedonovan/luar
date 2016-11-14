@@ -53,20 +53,9 @@ func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
 	return vp.value, vp.t
 }
 
-func valueOfProxyOrScalar(L *lua.State, idx int) (reflect.Value, reflect.Type) {
-	if isValueProxy(L, idx) {
-		return valueOfProxy(L, idx)
-	}
-
-	switch L.Type(idx) {
-	case lua.LUA_TNUMBER:
-		v := L.ToNumber(idx)
-		return reflect.ValueOf(v), reflect.TypeOf(v)
-	case lua.LUA_TSTRING:
-		v := L.ToString(idx)
-		return reflect.ValueOf(v), reflect.TypeOf(v)
-	}
-	return reflect.Value{}, nil
+func luaToGoValue(L *lua.State, idx int) (reflect.Value, reflect.Type) {
+	v := LuaToGo(L, nil, idx)
+	return reflect.ValueOf(v), reflect.TypeOf(v)
 }
 
 func isValueProxy(L *lua.State, idx int) bool {
@@ -83,14 +72,9 @@ func isValueProxy(L *lua.State, idx int) bool {
 	return res
 }
 
-func unwrapProxy(L *lua.State, idx int) interface{} {
-	v, _ := valueOfProxy(L, idx)
-	return v.Interface()
-}
-
 func mustUnwrapProxy(L *lua.State, idx int) interface{} {
 	if !isValueProxy(L, idx) {
-		RaiseError(L, fmt.Sprintf("arg #%d is not a Go object!", idx))
+		RaiseError(L, fmt.Sprintf("arg #%d is not a Go object", idx))
 	}
 	v, _ := valueOfProxy(L, idx)
 	return v.Interface()
@@ -121,6 +105,7 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 // This function is useful if you want to set up your Lua state manually, e.g.
 // with a custom allocator.
 func InitProxies(L *lua.State) {
+	// TODO: Split this function into un-exported subfunctions that are called every time a proxy is registered. Deprecate this.
 	flagValue := func() {
 		L.SetMetaMethod("__tostring", proxy__tostring)
 		L.SetMetaMethod("__gc", proxy__gc)
@@ -195,9 +180,9 @@ func InitProxies(L *lua.State) {
 // called. No need to check for type equality: Go's "==" operator will do it for
 // us.
 func proxy__eq(L *lua.State) int {
-	v1, _ := valueOfProxy(L, 1)
-	v2, _ := valueOfProxy(L, 2)
-	L.PushBoolean(v1.Interface() == v2.Interface())
+	v1 := LuaToGo(L, nil, 1)
+	v2 := LuaToGo(L, nil, 2)
+	L.PushBoolean(v1 == v2)
 	return 1
 }
 
@@ -210,28 +195,28 @@ func proxy__gc(L *lua.State) int {
 }
 
 func proxy__tostring(L *lua.State) int {
-	obj, _ := valueOfProxy(L, 1)
-	L.PushString(fmt.Sprintf("%v", obj))
+	v, _ := valueOfProxy(L, 1)
+	L.PushString(fmt.Sprintf("%v", v))
 	return 1
 }
 
 func slice__index(L *lua.State) int {
-	slice, _ := valueOfProxy(L, 1)
-	for slice.Kind() == reflect.Ptr {
+	v, _ := valueOfProxy(L, 1)
+	for v.Kind() == reflect.Ptr {
 		// For arrays.
-		slice = slice.Elem()
+		v = v.Elem()
 	}
 	if L.IsNumber(2) {
 		idx := L.ToInteger(2)
-		if idx < 1 || idx > slice.Len() {
+		if idx < 1 || idx > v.Len() {
 			RaiseError(L, "slice/array get: index out of range")
 		}
-		ret := slice.Index(idx - 1)
+		ret := v.Index(idx - 1)
 		GoToLua(L, nil, ret, false)
 	} else if L.IsString(2) {
 		name := L.ToString(2)
-		if slice.Kind() == reflect.Array {
-			pushGoMethod(L, name, slice)
+		if v.Kind() == reflect.Array {
+			pushGoMethod(L, name, v)
 			return 1
 		}
 		switch name {
@@ -240,26 +225,26 @@ func slice__index(L *lua.State) int {
 				narg := L.GetTop()
 				args := []reflect.Value{}
 				for i := 1; i <= narg; i++ {
-					elem := reflect.ValueOf(LuaToGo(L, slice.Type().Elem(), i))
+					elem := reflect.ValueOf(LuaToGo(L, v.Type().Elem(), i))
 					args = append(args, elem)
 				}
-				newslice := reflect.Append(slice, args...)
+				newslice := reflect.Append(v, args...)
 				makeValueProxy(L, newslice, cSliceMeta)
 				return 1
 			}
 			L.PushGoFunction(f)
 		case "cap":
-			L.PushInteger(int64(slice.Cap()))
+			L.PushInteger(int64(v.Cap()))
 		case "sub":
 			f := func(L *lua.State) int {
 				i1, i2 := L.ToInteger(1), L.ToInteger(2)
-				newslice := slice.Slice(i1-1, i2)
+				newslice := v.Slice(i1-1, i2)
 				makeValueProxy(L, newslice, cSliceMeta)
 				return 1
 			}
 			L.PushGoFunction(f)
 		default:
-			pushGoMethod(L, name, slice)
+			pushGoMethod(L, name, v)
 		}
 	} else {
 		RaiseError(L, "slice/array requires integer index")
@@ -268,82 +253,81 @@ func slice__index(L *lua.State) int {
 }
 
 func slice__newindex(L *lua.State) int {
-	slice, t := valueOfProxy(L, 1)
-	for slice.Kind() == reflect.Ptr {
+	v, t := valueOfProxy(L, 1)
+	for v.Kind() == reflect.Ptr {
 		// For arrays.
-		slice = slice.Elem()
+		v = v.Elem()
 		t = t.Elem()
 	}
 	idx := L.ToInteger(2)
 	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
-	if idx < 1 || idx > slice.Len() {
+	if idx < 1 || idx > v.Len() {
 		RaiseError(L, "slice/array set: index out of range")
 	}
-	slice.Index(idx - 1).Set(val)
+	v.Index(idx - 1).Set(val)
 	return 0
 }
 
 func slicemap__len(L *lua.State) int {
-	val, _ := valueOfProxy(L, 1)
-	for val.Kind() == reflect.Ptr {
+	v, _ := valueOfProxy(L, 1)
+	for v.Kind() == reflect.Ptr {
 		// For arrays.
-		val = val.Elem()
+		v = v.Elem()
 	}
-	L.PushInteger(int64(val.Len()))
+	L.PushInteger(int64(v.Len()))
 	return 1
 }
 
 func map__index(L *lua.State) int {
-	val, t := valueOfProxy(L, 1)
+	v, t := valueOfProxy(L, 1)
 	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
-	ret := val.MapIndex(key)
-	if ret.IsValid() {
-		GoToLua(L, nil, ret, false)
+	val := v.MapIndex(key)
+	if val.IsValid() {
+		GoToLua(L, nil, val, false)
 		return 1
 	} else if key.Kind() == reflect.String {
-		st := val
 		name := key.String()
 
 		// From 'callGoMethod':
-		ret := st.MethodByName(name)
-		if !ret.IsValid() {
-			T := st.Type()
+		val := v.MethodByName(name)
+		if !val.IsValid() {
+			T := v.Type()
 			// Could not resolve this method. Perhaps it's defined on the pointer?
 			if T.Kind() != reflect.Ptr {
-				if st.CanAddr() { // easy if we can get a pointer directly
-					st = st.Addr()
+				if v.CanAddr() { // easy if we can get a pointer directly
+					v = v.Addr()
 				} else { // otherwise have to create and initialize one...
-					VP := reflect.New(T)
-					VP.Elem().Set(st)
-					st = VP
+					vp := reflect.New(T)
+					vp.Elem().Set(v)
+					v = vp
 				}
 			}
-			ret = st.MethodByName(name)
+			val = v.MethodByName(name)
 			// Unlike 'callGoMethod', do not panic.
-			if !ret.IsValid() {
+			if !val.IsValid() {
 				L.PushNil()
 				return 1
 			}
 		}
-		L.PushGoFunction(GoLuaFunc(L, ret))
+		L.PushGoFunction(GoLuaFunc(L, val))
 		return 1
 	}
 	return 0
 }
 
 func map__newindex(L *lua.State) int {
-	m, t := valueOfProxy(L, 1)
+	v, t := valueOfProxy(L, 1)
 	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
 	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
-	m.SetMapIndex(key, val)
+	v.SetMapIndex(key, val)
 	return 0
 }
 
 func map__pairs(L *lua.State) int {
-	m, _ := valueOfProxy(L, 1)
-	keys := m.MapKeys()
+	v, _ := valueOfProxy(L, 1)
+	keys := v.MapKeys()
 	idx := -1
-	n := m.Len()
+	n := v.Len()
 	iter := func(L *lua.State) int {
 		idx++
 		if idx == n {
@@ -351,7 +335,7 @@ func map__pairs(L *lua.State) int {
 			return 1
 		}
 		GoToLua(L, nil, keys[idx], false)
-		val := m.MapIndex(keys[idx])
+		val := v.MapIndex(keys[idx])
 		GoToLua(L, nil, val, false)
 		return 2
 	}
@@ -360,8 +344,8 @@ func map__pairs(L *lua.State) int {
 }
 
 func map__ipairs(L *lua.State) int {
-	m, _ := valueOfProxy(L, 1)
-	keys := m.MapKeys()
+	v, _ := valueOfProxy(L, 1)
+	keys := v.MapKeys()
 	intKeys := map[uint64]reflect.Value{}
 
 	// Filter integer keys.
@@ -369,13 +353,13 @@ func map__ipairs(L *lua.State) int {
 		if k.Kind() == reflect.Interface {
 			k = k.Elem()
 		}
-		switch k.Kind() {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		switch unsizedKind(k) {
+		case reflect.Int64:
 			i := k.Int()
 			if i > 0 {
 				intKeys[uint64(i)] = k
 			}
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		case reflect.Uint64:
 			intKeys[k.Uint()] = k
 		}
 	}
@@ -388,7 +372,7 @@ func map__ipairs(L *lua.State) int {
 			return 1
 		}
 		GoToLua(L, nil, reflect.ValueOf(idx), false)
-		val := m.MapIndex(intKeys[idx])
+		val := v.MapIndex(intKeys[idx])
 		GoToLua(L, nil, val, false)
 		return 2
 	}
@@ -397,11 +381,11 @@ func map__ipairs(L *lua.State) int {
 }
 
 func slice__ipairs(L *lua.State) int {
-	s, _ := valueOfProxy(L, 1)
-	for s.Kind() == reflect.Ptr {
-		s = s.Elem()
+	v, _ := valueOfProxy(L, 1)
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
 	}
-	n := s.Len()
+	n := v.Len()
 	idx := -1
 	iter := func(L *lua.State) int {
 		idx++
@@ -410,7 +394,7 @@ func slice__ipairs(L *lua.State) int {
 			return 1
 		}
 		GoToLua(L, nil, reflect.ValueOf(idx+1), false) // report as 1-based index
-		val := s.Index(idx)
+		val := v.Index(idx)
 		GoToLua(L, nil, val, false)
 		return 2
 	}
@@ -419,16 +403,16 @@ func slice__ipairs(L *lua.State) int {
 }
 
 func struct__index(L *lua.State) int {
-	st, t := valueOfProxy(L, 1)
+	v, t := valueOfProxy(L, 1)
 	name := L.ToString(2)
-	est := st
+	vp := v
 	if t.Kind() == reflect.Ptr {
-		est = st.Elem()
+		v = v.Elem()
 	}
-	ret := est.FieldByName(name)
+	ret := v.FieldByName(name)
 	if !ret.IsValid() || !ret.CanSet() {
 		// No such exported field, try for method.
-		pushGoMethod(L, name, st)
+		pushGoMethod(L, name, vp)
 	} else {
 		if isPointerToPrimitive(ret) {
 			GoToLua(L, nil, ret.Elem(), false)
@@ -440,20 +424,20 @@ func struct__index(L *lua.State) int {
 }
 
 func interface__index(L *lua.State) int {
-	st, _ := valueOfProxy(L, 1)
+	v, _ := valueOfProxy(L, 1)
 	name := L.ToString(2)
-	pushGoMethod(L, name, st)
+	pushGoMethod(L, name, v)
 	return 1
 }
 
 func struct__newindex(L *lua.State) int {
-	st, t := valueOfProxy(L, 1)
+	v, t := valueOfProxy(L, 1)
 	name := L.ToString(2)
 	if t.Kind() == reflect.Ptr {
-		st = st.Elem()
+		v = v.Elem()
 	}
-	field := st.FieldByName(name)
-	assertValid(L, field, st, name, "field")
+	field := v.FieldByName(name)
+	assertValid(L, field, v, name, "field")
 	val := reflect.ValueOf(LuaToGo(L, field.Type(), 3))
 	if isPointerToPrimitive(field) {
 		field.Elem().Set(val)
@@ -557,8 +541,8 @@ func commonKind(v1, v2 reflect.Value) reflect.Kind {
 }
 
 func number__lt(L *lua.State) int {
-	v1, _ := valueOfProxyOrScalar(L, 1)
-	v2, _ := valueOfProxyOrScalar(L, 2)
+	v1, _ := luaToGoValue(L, 1)
+	v2, _ := luaToGoValue(L, 2)
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
 		L.PushBoolean(v1.Uint() < v2.Uint())
@@ -571,8 +555,8 @@ func number__lt(L *lua.State) int {
 }
 
 func number__add(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -589,8 +573,8 @@ func number__add(L *lua.State) int {
 }
 
 func number__sub(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -607,8 +591,8 @@ func number__sub(L *lua.State) int {
 }
 
 func number__mul(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -625,8 +609,8 @@ func number__mul(L *lua.State) int {
 }
 
 func number__div(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -643,8 +627,8 @@ func number__div(L *lua.State) int {
 }
 
 func number__mod(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -659,8 +643,8 @@ func number__mod(L *lua.State) int {
 }
 
 func number__pow(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	var result interface{}
 	switch commonKind(v1, v2) {
 	case reflect.Uint64:
@@ -677,7 +661,7 @@ func number__pow(L *lua.State) int {
 }
 
 func number__unm(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
+	v1, t1 := luaToGoValue(L, 1)
 	var result interface{}
 	switch unsizedKind(v1) {
 	case reflect.Uint64:
@@ -701,22 +685,22 @@ func number__unm(L *lua.State) int {
 }
 
 func string__len(L *lua.State) int {
-	v1, _ := valueOfProxyOrScalar(L, 1)
+	v1, _ := luaToGoValue(L, 1)
 	L.PushInteger(int64(v1.Len()))
 	return 1
 }
 
 func string__lt(L *lua.State) int {
-	v1, _ := valueOfProxyOrScalar(L, 1)
-	v2, _ := valueOfProxyOrScalar(L, 2)
+	v1, _ := luaToGoValue(L, 1)
+	v2, _ := luaToGoValue(L, 2)
 	L.PushBoolean(v1.String() < v2.String())
 	return 1
 }
 
 // Lua accepts concatenation with string and number.
 func string__concat(L *lua.State) int {
-	v1, t1 := valueOfProxyOrScalar(L, 1)
-	v2, t2 := valueOfProxyOrScalar(L, 2)
+	v1, t1 := luaToGoValue(L, 1)
+	v2, t2 := luaToGoValue(L, 2)
 	s1 := valueToString(L, v1)
 	s2 := valueToString(L, v2)
 	result := s1 + s2

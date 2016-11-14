@@ -699,7 +699,8 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 		// it up as a LuaObject.
 		if t == nil && !istable {
 			if isValueProxy(L, idx) {
-				return unwrapProxy(L, idx)
+				v, _ := valueOfProxy(L, idx)
+				return v.Interface()
 			}
 			return NewLuaObject(L, idx)
 		}
