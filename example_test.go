@@ -1,7 +1,5 @@
 package luar_test
 
-// TODO: Not all examples are interactive in godoc. Why?
-
 // TODO: Lua's print() function will output to stdout instead of being compared
 // to the desired result. Workaround: register one of Go's printing functions
 // from the fmt library.
@@ -18,11 +16,6 @@ import (
 	"github.com/stevedonovan/luar"
 )
 
-type person struct {
-	Name string
-	Age  int
-}
-
 func Example() {
 	const test = `
 for i = 1, 3 do
@@ -31,6 +24,11 @@ end
 Print(user)
 Print(user.Name, user.Age)
 `
+
+	type person struct {
+		Name string
+		Age  int
+	}
 
 	L := luar.Init()
 	defer L.Close()
@@ -55,26 +53,26 @@ Print(user.Name, user.Age)
 	// Dolly 46
 }
 
-type Ref struct {
-	Index  int
-	Number *int
-	Title  *string
-}
-
-func newRef() *Ref {
-	n := new(int)
-	*n = 10
-	t := new(string)
-	*t = "foo"
-	return &Ref{Index: 17, Number: n, Title: t}
-}
-
 func Example_pointers() {
 	const test = `
 -- Pointers to structs and structs within pointers are automatically dereferenced.
 local t = newRef()
 Print(t.Index, t.Number, t.Title)
 `
+
+	type Ref struct {
+		Index  int
+		Number *int
+		Title  *string
+	}
+
+	newRef := func() *Ref {
+		n := new(int)
+		*n = 10
+		t := new(string)
+		*t = "foo"
+		return &Ref{Index: 17, Number: n, Title: t}
+	}
 
 	L := luar.Init()
 	defer L.Close()
@@ -115,7 +113,7 @@ end
 	// 4 frodo
 }
 
-// Using Lua to parse configuration files.
+// TODO: If ExampleCopy* get removed, remove this as well.
 const config = `return {
 	baggins = true,
 	age = 24,
@@ -129,6 +127,7 @@ const config = `return {
 }`
 
 // Read configuration in Lua format.
+// WARNING: Deprecated.
 func ExampleCopyTableToMap() {
 	L := luar.Init()
 	defer L.Close()
@@ -164,6 +163,7 @@ func ExampleCopyTableToMap() {
 	// true
 }
 
+// WARNING: Deprecated.
 func ExampleCopyTableToStruct() {
 	L := luar.Init()
 	defer L.Close()
@@ -226,14 +226,6 @@ func ExampleGoToLua() {
 	// Hello world!
 }
 
-func GoFun(args []int) (res map[string]int) {
-	res = make(map[string]int)
-	for i, val := range args {
-		res[strconv.Itoa(i)] = val * val
-	}
-	return
-}
-
 // This example shows how Go slices and maps are marshalled to Lua tables and
 // vice versa. This requires the Lua state to be initialized with `luar.Init()`.
 //
@@ -244,7 +236,7 @@ func GoFun(args []int) (res map[string]int) {
 func ExampleInit() {
 	const code = `
 -- Lua tables auto-convert to slices.
-local res = GoFun {10,20,30,40}
+local res = foo {10,20,30,40}
 
 -- The result is a map-proxy.
 print(res['1'], res['2'])
@@ -256,11 +248,19 @@ for k,v in pairs(res) do
 end
 `
 
+	foo := func(args []int) (res map[string]int) {
+		res = make(map[string]int)
+		for i, val := range args {
+			res[strconv.Itoa(i)] = val * val
+		}
+		return
+	}
+
 	L := luar.Init()
 	defer L.Close()
 
 	luar.Register(L, "", luar.Map{
-		"GoFun": GoFun,
+		"foo":   foo,
 		"print": fmt.Println,
 	})
 
@@ -350,6 +350,19 @@ print(M.three)
 func ExampleNewLuaObject() {
 	L := luar.Init()
 	defer L.Close()
+
+	// Using Lua to parse configuration files.
+	const config = `return {
+	baggins = true,
+	age = 24,
+	name = 'dumbo' ,
+	marked = {1,2},
+	options = {
+		leave = true,
+		cancel = 'always',
+		tags = {strong=true, foolish=true},
+	}
+}`
 
 	err := L.DoString(config)
 	if err != nil {
