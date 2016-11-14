@@ -240,7 +240,7 @@ func GoFun(args []int) (res map[string]int) {
 // An arbitrary Go function is callable from Lua, and list-like tables become
 // slices on the Go side. The Go function returns a map, which is wrapped as a
 // proxy object. You can however then copy this to a Lua table explicitly. There
-// is also `luar.slice2table` on the Lua side.
+// is also `luar.unproxify` on the Lua side.
 func ExampleInit() {
 	const code = `
 -- Lua tables auto-convert to slices.
@@ -250,7 +250,7 @@ local res = GoFun {10,20,30,40}
 print(res['1'], res['2'])
 
 -- Which we may explicitly convert to a table.
-res = luar.map2table(res)
+res = luar.unproxify(res)
 for k,v in pairs(res) do
 	print(k,v)
 end

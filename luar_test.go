@@ -64,12 +64,12 @@ assert(res == 111)`},
 assert(proxy['0'] == 100)
 assert(proxy['1'] == 400)`},
 		{"copy proxy to table", `proxy = squares{10, 20}
-t = luar.map2table(proxy)
+t = luar.unproxify(proxy)
 assert(type(t)=='table')
 assert(t['0'] == 100)
 assert(t['1'] == 400)`},
 		{"change proxy, not table", `proxy = squares{10, 20}
-t = luar.map2table(proxy)
+t = luar.unproxify(proxy)
 proxy['0'] = 0
 assert(t['0'] == 100)`},
 
@@ -277,7 +277,7 @@ assert( (k[1]=='one' and k[2]=='two') or (k[2]=='one' and k[1]=='two') )
 
 local v = gons.values(T)
 assert(v[1]==1 or v[2]==1)
-v = luar.slice2table(v)
+v = luar.unproxify(v)
 assert( (v[1]==1 and v[2]==2) or (v[2]==1 and v[1]==2) )`
 
 	L := Init()
@@ -661,7 +661,7 @@ assert(s.FooC() == "FooC")
 func TestTypeDiscipline(t *testing.T) {
 	tdt := []struct{ desc, code string }{
 		{"call methods on objects 'derived' from primitive types", `assert(a.String() == '5')`},
-		{"get underlying primitive value", `assert(luar.raw(a) == 5)`},
+		{"get underlying primitive value", `assert(luar.unproxify(a) == 5)`},
 		{"arith ops on derived types", `assert(new_a(8) == new_a(8))
 assert(new_a(5) ~= new_a(6))
 assert(new_a(5) < new_a(8))
@@ -765,12 +765,12 @@ func TestTypeConversion(t *testing.T) {
 	defer L.Close()
 
 	const code = `
-tab = luar.slice2table(sl)
+tab = luar.unproxify(sl)
 assert(#tab == 4)
 assert(tab[1] == luar.null)
 assert(tab[3] == luar.null)
 
-tab2 = luar.map2table(mn)
+tab2 = luar.unproxify(mn)
 assert(tab2.bee == luar.null and tab2.dee == luar.null)
 `
 

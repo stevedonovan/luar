@@ -120,6 +120,7 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 
 // CopyTableToMap returns the Lua table at 'idx' as a copied Go map.
 // If 't' is nil then the map type is map[string]interface{}.
+// WARNING: Deprecated.
 func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
 	return copyTableToMap(L, t, idx, map[uintptr]interface{}{})
 }
@@ -157,6 +158,7 @@ func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]i
 // CopyTableToStruct copies matching Lua table entries to a struct, given the
 // struct type and the index on the Lua stack. Use the "lua" tag to set field
 // names.
+// WARNING: Deprecated.
 func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
 	return copyTableToStruct(L, t, idx, map[uintptr]interface{}{})
 }
@@ -217,7 +219,7 @@ func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintpt
 
 // CopySliceToTable copies a Go slice to a Lua table.
 // 'nil' is represented as 'luar.null'.
-// Defines 'luar.slice2table'.
+// WARNING: Deprecated.
 func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -226,7 +228,7 @@ func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
 
 // CopyArrayToTable copies a Go array to a Lua table.
 // 'nil' is represented as 'luar.null'.
-// Defines 'luar.array2table'.
+// WARNING: Deprecated.
 func CopyArrayToTable(L *lua.State, v reflect.Value) int {
 	visitor := newVisitor(L)
 	defer visitor.close()
@@ -268,8 +270,8 @@ func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 
 // CopyStructToTable copies a Go struct to a Lua table.
 // 'nil' is represented as 'luar.null'.
-// Defines 'luar.struct2table'.
 // Use the "lua" tag to set field names.
+// WARNING: Deprecated.
 func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -311,7 +313,7 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int
 }
 
 // CopyMapToTable copies a Go map to a Lua table.
-// Defines 'luar.map2table'.
+// WARNING: Deprecated.
 func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
 	v := newVisitor(L)
 	defer v.close()
@@ -1154,9 +1156,19 @@ end
 // conversions however.
 //
 // It populates the 'luar' table with the following functions:
-// 	'map2table', 'slice2table', 'array2table', 'struct2table', 'map', 'slice', 'type', 'sub', 'append', 'raw',
+//
+//   method(p proxy, n methodName) function
+//   type(p proxy) string
+//   unproxify(p proxy) table
+//
+//   chan() proxy<chan interface{}>
+//   complex(real number, imag number) proxy
+//   map() proxy<map[string]interface{}>
+//   slice() proxy<[]interface{}>
+//
 // and values:
-//  'null'.
+//
+//   null
 //
 // This replaces the pairs/ipairs functions so that __pairs/__ipairs
 // can be used, Lua 5.2 style.

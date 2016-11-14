@@ -5,7 +5,7 @@ This commandline tool provides a useful Lua REPL for exploring Go in Lua.
 You will to get 'go.linenoise':
 
 	go get github.com/GeertJohan/go.linenoise
-	
+
 to get line history and tab completion. This is an extended REPL and comes with
 pretty-printing:
 
@@ -17,8 +17,8 @@ Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio
 10	"10"	{10}
 ```
 
-One use for the `luar` REPL is to explore Go libraries. `regexp.Compile` is 
-exported as `regexp`, so we can do this. note that the endlessly useful `fmt.Println` 
+One use for the `luar` REPL is to explore Go libraries. `regexp.Compile` is
+exported as `regexp`, so we can do this. note that the endlessly useful `fmt.Println`
 is available as `println` from Lua. Starting a line with a period ('dot') wraps
 that line in `println`; starting a line with '=' wraps it with `print` (as is usual
 with the standard Lua prompt.)
@@ -40,7 +40,7 @@ is one-based, and that Go slices have a fixed size!  The metatable for slice pro
 has an `__ipairs` metamethod. Although luar is (currently) based on Lua 5.1,
 it loads code to provide a 5.2-compatible `pairs` and `ipairs`.
 
-The inverse of `slice` is `slice2table`. 
+The inverse of `slice` is `unproxify`.
 
 ```lua
 > s = luar.slice(2) // create a Go slice
@@ -57,7 +57,7 @@ nil
 > for i,v in ipairs(s) do print (i,v) end
 1	10
 2	20
-> = luar.slice2table(s)
+> = luar.unproxify(s)
 {10,20}
 > println(s)
 [10 20]
@@ -65,9 +65,9 @@ nil
 [10 20]
 ```
 
-A similar operation is `luar.map` (with corresponding `luar.map2table`).
+A similar operation is `luar.map`.
 Using `luar.type` we can find the Go type of a proxy (it returns `nil` if this isn't
-a Go type). By getting the type of a value we can then do _reflection_ and 
+a Go type). By getting the type of a value we can then do _reflection_ and
 find out what methods a type has, etc.
 
 ```lua
@@ -112,7 +112,7 @@ local function sdump(st)
     for i = 1,n do
         local f,v = t.Field(i-1)
         if f.PkgPath == "" then --// only public fields!
-            v = val.Field(i-1)    
+            v = val.Field(i-1)
             cc[f.Name] = v.Interface()
         end
     end
@@ -125,7 +125,7 @@ local function sdump(st)
     end
     return cc
 end
-        
+
 mt = getmetatable(__DUMMY__)
 mt.__pairs = function(st)
     local cc = sdump(st)
