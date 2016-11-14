@@ -1000,3 +1000,26 @@ assert(a[2][1] == 18)
 		}
 	}
 }
+
+func TestStringIpairs(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	a := C("naïveté")
+
+	Register(L, "", Map{"a": a})
+
+	const code = `
+for k, v in ipairs(a) do
+if k == 3 then
+assert(v == "ï")
+break
+end
+end
+`
+
+	err := L.DoString(code)
+	if err != nil {
+		t.Error(err)
+	}
+}

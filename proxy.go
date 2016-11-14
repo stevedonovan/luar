@@ -142,6 +142,8 @@ func InitProxies(L *lua.State) {
 	L.SetMetaMethod("__len", string__len)
 	L.SetMetaMethod("__lt", string__lt)
 	L.SetMetaMethod("__concat", string__concat)
+	L.SetMetaMethod("__ipairs", string__ipairs)
+	L.SetMetaMethod("__pairs", string__ipairs)
 	flagValue()
 
 	L.NewMetaTable(cSliceMeta)
@@ -781,5 +783,27 @@ func string__index(L *lua.State) int {
 	} else {
 		pushGoMethod(L, name, v)
 	}
+	return 1
+}
+
+func string__ipairs(L *lua.State) int {
+	v, _ := valueOfProxy(L, 1)
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	r := []rune(v.String())
+	n := len(r)
+	idx := -1
+	iter := func(L *lua.State) int {
+		idx++
+		if idx == n {
+			L.PushNil()
+			return 1
+		}
+		GoToLua(L, nil, reflect.ValueOf(idx+1), false) // report as 1-based index
+		GoToLua(L, nil, reflect.ValueOf(string(r[idx])), false)
+		return 2
+	}
+	L.PushGoFunction(iter)
 	return 1
 }
