@@ -36,6 +36,83 @@ func isPointerToPrimitive(v reflect.Value) bool {
 }
 
 func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
+	// The metatable needs be set up in the Lua state before the proxy is created,
+	// otherwise closing the state will fail on calling the garbage collector. Not
+	// really sure why this happens though...
+	L.LGetMetaTable(proxyMT)
+	if L.IsNil(-1) {
+		flagValue := func() {
+			L.SetMetaMethod("__tostring", proxy__tostring)
+			L.SetMetaMethod("__gc", proxy__gc)
+			L.SetMetaMethod("__eq", proxy__eq)
+			L.PushBoolean(true)
+			L.SetField(-2, "luago.value")
+			L.Pop(1)
+		}
+		switch proxyMT {
+		case cNumberMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", interface__index)
+			L.SetMetaMethod("__lt", number__lt)
+			L.SetMetaMethod("__add", number__add)
+			L.SetMetaMethod("__sub", number__sub)
+			L.SetMetaMethod("__mul", number__mul)
+			L.SetMetaMethod("__div", number__div)
+			L.SetMetaMethod("__mod", number__mod)
+			L.SetMetaMethod("__pow", number__pow)
+			L.SetMetaMethod("__unm", number__unm)
+			flagValue()
+		case cComplexMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", complex__index)
+			L.SetMetaMethod("__add", number__add)
+			L.SetMetaMethod("__sub", number__sub)
+			L.SetMetaMethod("__mul", number__mul)
+			L.SetMetaMethod("__div", number__div)
+			L.SetMetaMethod("__pow", number__pow)
+			L.SetMetaMethod("__unm", number__unm)
+			flagValue()
+		case cStringMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", string__index)
+			L.SetMetaMethod("__len", string__len)
+			L.SetMetaMethod("__lt", string__lt)
+			L.SetMetaMethod("__concat", string__concat)
+			L.SetMetaMethod("__ipairs", string__ipairs)
+			L.SetMetaMethod("__pairs", string__ipairs)
+			flagValue()
+		case cSliceMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", slice__index)
+			L.SetMetaMethod("__newindex", slice__newindex)
+			L.SetMetaMethod("__len", slicemap__len)
+			L.SetMetaMethod("__ipairs", slice__ipairs)
+			L.SetMetaMethod("__pairs", slice__ipairs)
+			flagValue()
+		case cMapMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", map__index)
+			L.SetMetaMethod("__newindex", map__newindex)
+			L.SetMetaMethod("__len", slicemap__len)
+			L.SetMetaMethod("__ipairs", map__ipairs)
+			L.SetMetaMethod("__pairs", map__pairs)
+			flagValue()
+		case cStructMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", struct__index)
+			L.SetMetaMethod("__newindex", struct__newindex)
+			flagValue()
+		case cInterfaceMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", interface__index)
+			flagValue()
+		case cChannelMeta:
+			L.NewMetaTable(proxyMT)
+			L.SetMetaMethod("__index", channel__index)
+			flagValue()
+		}
+	}
+	L.Pop(1)
 	rawptr := L.NewUserdata(typeof((*valueProxy)(nil)).Size())
 	ptr := (*valueProxy)(rawptr)
 	ptr.value = val
@@ -103,77 +180,9 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 // This need not be called if the Lua state was created with Init().
 // This function is useful if you want to set up your Lua state manually, e.g.
 // with a custom allocator.
-func InitProxies(L *lua.State) {
-	// TODO: Split this function into un-exported subfunctions that are called every time a proxy is registered. Deprecate this.
-	flagValue := func() {
-		L.SetMetaMethod("__tostring", proxy__tostring)
-		L.SetMetaMethod("__gc", proxy__gc)
-		L.SetMetaMethod("__eq", proxy__eq)
-		L.PushBoolean(true)
-		L.SetField(-2, "luago.value")
-		L.Pop(1)
-	}
-
-	L.NewMetaTable(cNumberMeta)
-	L.SetMetaMethod("__index", interface__index)
-	L.SetMetaMethod("__lt", number__lt)
-	L.SetMetaMethod("__add", number__add)
-	L.SetMetaMethod("__sub", number__sub)
-	L.SetMetaMethod("__mul", number__mul)
-	L.SetMetaMethod("__div", number__div)
-	L.SetMetaMethod("__mod", number__mod)
-	L.SetMetaMethod("__pow", number__pow)
-	L.SetMetaMethod("__unm", number__unm)
-	flagValue()
-
-	L.NewMetaTable(cComplexMeta)
-	L.SetMetaMethod("__index", complex__index)
-	L.SetMetaMethod("__add", number__add)
-	L.SetMetaMethod("__sub", number__sub)
-	L.SetMetaMethod("__mul", number__mul)
-	L.SetMetaMethod("__div", number__div)
-	L.SetMetaMethod("__pow", number__pow)
-	L.SetMetaMethod("__unm", number__unm)
-	flagValue()
-
-	L.NewMetaTable(cStringMeta)
-	L.SetMetaMethod("__index", string__index)
-	L.SetMetaMethod("__len", string__len)
-	L.SetMetaMethod("__lt", string__lt)
-	L.SetMetaMethod("__concat", string__concat)
-	L.SetMetaMethod("__ipairs", string__ipairs)
-	L.SetMetaMethod("__pairs", string__ipairs)
-	flagValue()
-
-	L.NewMetaTable(cSliceMeta)
-	L.SetMetaMethod("__index", slice__index)
-	L.SetMetaMethod("__newindex", slice__newindex)
-	L.SetMetaMethod("__len", slicemap__len)
-	L.SetMetaMethod("__ipairs", slice__ipairs)
-	L.SetMetaMethod("__pairs", slice__ipairs)
-	flagValue()
-
-	L.NewMetaTable(cMapMeta)
-	L.SetMetaMethod("__index", map__index)
-	L.SetMetaMethod("__newindex", map__newindex)
-	L.SetMetaMethod("__len", slicemap__len)
-	L.SetMetaMethod("__ipairs", map__ipairs)
-	L.SetMetaMethod("__pairs", map__pairs)
-	flagValue()
-
-	L.NewMetaTable(cStructMeta)
-	L.SetMetaMethod("__index", struct__index)
-	L.SetMetaMethod("__newindex", struct__newindex)
-	flagValue()
-
-	L.NewMetaTable(cInterfaceMeta)
-	L.SetMetaMethod("__index", interface__index)
-	flagValue()
-
-	L.NewMetaTable(cChannelMeta)
-	L.SetMetaMethod("__index", channel__index)
-	flagValue()
-}
+//
+// WARNING: Deprecated, this function is not needed anymore.
+func InitProxies(L *lua.State) {}
 
 // From Lua's specs: "A metamethod only is selected when both objects being
 // compared have the same type and the same metamethod for the selected
@@ -675,6 +684,7 @@ func number__unm(L *lua.State) int {
 		result = -v1.Complex()
 	}
 	v := reflect.ValueOf(result)
+	// TODO: Call GoToLua?
 	if unsizedKind(v1) == reflect.Complex128 {
 		makeValueProxy(L, v.Convert(t1), cComplexMeta)
 	} else if predeclaredScalarType(t1) != nil {

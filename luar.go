@@ -1147,6 +1147,7 @@ func Lookup(L *lua.State, path string, idx int) {
 }
 
 // LuarSetup replaces the 'pairs' and 'ipairs' so they work on proxies as well.
+// TODO: Use exported functions instead.
 const LuarSetup = `
 local opairs = pairs
 function pairs(t)
@@ -1168,11 +1169,9 @@ function ipairs(t)
 end
 `
 
-// Init makes and initialize a new pre-configured Lua state. It is not required
-// for using the 'GoToLua' and 'LuaToGo' functions; it is needed for proxy
-// conversions however.
+// Init makes and initialize a new pre-configured Lua state.
 //
-// It populates the 'luar' table with the following:
+// It populates the 'luar' table with some helper functions/values:
 //
 //   method: ProxyMethod
 //   type: ProxyType
@@ -1185,12 +1184,13 @@ end
 //
 //   null: Null
 //
-// This replaces the pairs/ipairs functions so that __pairs/__ipairs
-// can be used, Lua 5.2 style.
+// It replaces the pairs/ipairs functions so that __pairs/__ipairs can be used,
+// Lua 5.2 style. It allows for looping over Go composite types and strings.
+//
+// It is not required for using the 'GoToLua' and 'LuaToGo' functions.
 func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
-	InitProxies(L)
 	_ = L.DoString(LuarSetup) // Never fails.
 	RawRegister(L, "luar", Map{
 		// Functions.
