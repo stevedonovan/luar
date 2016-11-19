@@ -251,7 +251,6 @@ func valueToNumber(L *lua.State, v reflect.Value) float64 {
 		if f, err := strconv.ParseFloat(v.String(), 64); err == nil {
 			return f
 		}
-		RaiseError(L, "cannot convert to number")
 	}
 	RaiseError(L, "cannot convert to number")
 	return 0
