@@ -304,7 +304,7 @@ func number__unm(L *lua.State) int {
 	v := reflect.ValueOf(result)
 	if unsizedKind(v1) == reflect.Complex128 {
 		makeValueProxy(L, v.Convert(t1), cComplexMeta)
-	} else if predeclaredScalarType(t1) != nil {
+	} else if isNewType(t1) {
 		makeValueProxy(L, v.Convert(t1), cNumberMeta)
 	} else {
 		L.PushNumber(v.Float())

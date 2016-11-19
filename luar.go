@@ -340,31 +340,31 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 
 	switch val.Kind() {
 	case reflect.Float64, reflect.Float32:
-		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
+		if !dontproxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(val.Float())
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
+		if !dontproxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(float64(val.Int()))
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
+		if !dontproxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(float64(val.Uint()))
 		}
 	case reflect.String:
-		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
+		if !dontproxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cStringMeta)
 		} else {
 			L.PushString(val.String())
 		}
 	case reflect.Bool:
-		if !dontproxify && predeclaredScalarType(val.Type()) != nil {
+		if !dontproxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cInterfaceMeta)
 		} else {
 			L.PushBoolean(val.Bool())
@@ -789,43 +789,30 @@ func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interfac
 	return value
 }
 
-// Return the underlying type of a new scalar type, nil otherwise.
-func predeclaredScalarType(t reflect.Type) reflect.Type {
-	var types = []reflect.Type{
-		nil, // Invalid Kind = iota
-		typeof((*bool)(nil)),
-		typeof((*int)(nil)),
-		typeof((*int8)(nil)),
-		typeof((*int16)(nil)),
-		typeof((*int32)(nil)),
-		typeof((*int64)(nil)),
-		typeof((*uint)(nil)),
-		typeof((*uint8)(nil)),
-		typeof((*uint16)(nil)),
-		typeof((*uint32)(nil)),
-		typeof((*uint64)(nil)),
-		nil, // Uintptr
-		typeof((*float32)(nil)),
-		typeof((*float64)(nil)),
-		nil, // Complex64
-		nil, // Complex128
-		nil, // Array
-		nil, // Chan
-		nil, // Func
-		nil, // Interface
-		nil, // Map
-		nil, // Ptr
-		nil, // Slice
-		typeof((*string)(nil)),
-		nil, // Struct
-		nil, // UnsafePointer
+func isNewType(t reflect.Type) bool {
+	types := [...]reflect.Type{
+		reflect.Invalid:    nil, // Invalid Kind = iota
+		reflect.Bool:       typeof((*bool)(nil)),
+		reflect.Int:        typeof((*int)(nil)),
+		reflect.Int8:       typeof((*int8)(nil)),
+		reflect.Int16:      typeof((*int16)(nil)),
+		reflect.Int32:      typeof((*int32)(nil)),
+		reflect.Int64:      typeof((*int64)(nil)),
+		reflect.Uint:       typeof((*uint)(nil)),
+		reflect.Uint8:      typeof((*uint8)(nil)),
+		reflect.Uint16:     typeof((*uint16)(nil)),
+		reflect.Uint32:     typeof((*uint32)(nil)),
+		reflect.Uint64:     typeof((*uint64)(nil)),
+		reflect.Uintptr:    typeof((*uintptr)(nil)),
+		reflect.Float32:    typeof((*float32)(nil)),
+		reflect.Float64:    typeof((*float64)(nil)),
+		reflect.Complex64:  typeof((*complex64)(nil)),
+		reflect.Complex128: typeof((*complex128)(nil)),
+		reflect.String:     typeof((*string)(nil)),
 	}
 
 	pt := types[int(t.Kind())]
-	if pt != nil && pt != t {
-		return pt
-	}
-	return nil
+	return pt != t
 }
 
 // RaiseError raises a Lua error from Go code.
