@@ -140,11 +140,11 @@ func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) int {
 		visited.mark(vmap)
 		for _, key := range vmap.MapKeys() {
 			v := vmap.MapIndex(key)
-			goToLua(L, nil, key, false, visited)
+			goToLua(L, key, true, visited)
 			if isNil(v) {
 				v = nullv
 			}
-			goToLua(L, nil, v, true, visited)
+			goToLua(L, v, false, visited)
 			L.SetTable(-3)
 		}
 		return 1
@@ -177,7 +177,7 @@ func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 			if isNil(v) {
 				v = nullv
 			}
-			goToLua(L, nil, v, true, visited)
+			goToLua(L, v, false, visited)
 			L.SetTable(-3)
 		}
 		return 1
@@ -209,9 +209,9 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int
 			if tag != "" {
 				key = tag
 			}
-			goToLua(L, nil, reflect.ValueOf(key), true, visited)
+			goToLua(L, key, false, visited)
 			v := vstruct.Field(i)
-			goToLua(L, nil, v, true, visited)
+			goToLua(L, v, false, visited)
 			L.SetTable(-3)
 		}
 		return 1
@@ -289,7 +289,7 @@ func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 				n.Elem().Set(val)
 				val = n
 			}
-			GoToLua(L, nil, val, false)
+			GoToLuaProxy(L, val)
 		}
 		return len(resV)
 	}
@@ -298,23 +298,38 @@ func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 // GoToLua pushes a Go value 'val' on the Lua stack.
 //
 // It unboxes interfaces.
-// 't' is here for backward-compatibility and will be ignored.
 //
-// If not proxifying, pointers are followed recursively. Slices, structs and maps are copied over as tables.
-//
-// When proxifying, pointers are preserved. Structs and arrays need to be
-// passed as pointers to be proxified, otherwise they will be copied as tables.
-//
-// Predeclared scalar types are never proxified (dontproxify is ignored) as they have no methods.
-func GoToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool) {
+// Pointers are followed recursively. Slices, structs and maps are copied over as tables.
+func GoToLua(L *lua.State, val interface{}) {
 	v := newVisitor(L)
-	goToLua(L, nil, val, dontproxify, v)
+	goToLua(L, val, false, v)
+	v.close()
+}
+
+// GoToLuaProxy is like GoToLua but pushes a proxy on the Lua stack when it makes sense.
+//
+// A proxy is a Lua userdata that wraps a Go value.
+//
+// Pointers are preserved.
+//
+// Structs and arrays need to be passed as pointers to be proxified, otherwise
+// they will be copied as tables.
+//
+// Predeclared scalar types are never proxified as they have no methods.
+func GoToLuaProxy(L *lua.State, val interface{}) {
+	v := newVisitor(L)
+	goToLua(L, val, true, v)
 	v.close()
 }
 
 // TODO: Check if we really need multiple pointer levels since pointer methods
 // can be called on non-pointers.
-func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, visited visitor) {
+func goToLua(L *lua.State, v interface{}, proxify bool, visited visitor) {
+	var val reflect.Value
+	val, ok := v.(reflect.Value)
+	if !ok {
+		val = reflect.ValueOf(v)
+	}
 	if !val.IsValid() {
 		L.PushNil()
 		return
@@ -344,31 +359,31 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 
 	switch val.Kind() {
 	case reflect.Float64, reflect.Float32:
-		if !dontproxify && isNewType(val.Type()) {
+		if proxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(val.Float())
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if !dontproxify && isNewType(val.Type()) {
+		if proxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(float64(val.Int()))
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if !dontproxify && isNewType(val.Type()) {
+		if proxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cNumberMeta)
 		} else {
 			L.PushNumber(float64(val.Uint()))
 		}
 	case reflect.String:
-		if !dontproxify && isNewType(val.Type()) {
+		if proxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cStringMeta)
 		} else {
 			L.PushString(val.String())
 		}
 	case reflect.Bool:
-		if !dontproxify && isNewType(val.Type()) {
+		if proxify && isNewType(val.Type()) {
 			makeValueProxy(L, ptrVal, cInterfaceMeta)
 		} else {
 			L.PushBoolean(val.Bool())
@@ -377,7 +392,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		makeValueProxy(L, ptrVal, cComplexMeta)
 	case reflect.Array:
 		// It needs be a pointer to be a proxy, otherwise values won't be settable.
-		if !dontproxify && ptrVal.Kind() == reflect.Ptr {
+		if proxify && ptrVal.Kind() == reflect.Ptr {
 			makeValueProxy(L, ptrVal, cSliceMeta)
 		} else {
 			// See the case of struct.
@@ -387,7 +402,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 			copySliceToTable(L, ptrVal, visited)
 		}
 	case reflect.Slice:
-		if !dontproxify {
+		if proxify {
 			makeValueProxy(L, ptrVal, cSliceMeta)
 		} else {
 			if visited.push(val) {
@@ -396,7 +411,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 			copySliceToTable(L, val, visited)
 		}
 	case reflect.Map:
-		if !dontproxify {
+		if proxify {
 			makeValueProxy(L, ptrVal, cMapMeta)
 		} else {
 			if visited.push(val) {
@@ -405,7 +420,7 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 			copyMapToTable(L, val, visited)
 		}
 	case reflect.Struct:
-		if !dontproxify && ptrVal.Kind() == reflect.Ptr {
+		if proxify && ptrVal.Kind() == reflect.Ptr {
 			if ptrVal.CanInterface() {
 				switch v := ptrVal.Interface().(type) {
 				case error:
@@ -851,7 +866,7 @@ func Register(L *lua.State, table string, values Map) {
 		L.GetGlobal("_G")
 	}
 	for name, val := range values {
-		GoToLua(L, nil, reflect.ValueOf(val), false)
+		GoToLuaProxy(L, val)
 		L.SetField(-2, name)
 	}
 	if pop {

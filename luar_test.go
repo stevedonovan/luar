@@ -360,7 +360,7 @@ func TestStructCopy(t *testing.T) {
 	defer L.Close()
 
 	a := person{Name: "foo", Age: 17}
-	GoToLua(L, nil, reflect.ValueOf(a), true)
+	GoToLua(L, a)
 	L.SetGlobal("a")
 
 	const code = `
@@ -881,7 +881,7 @@ func TestCycleGoToLua(t *testing.T) {
 		s := make([]interface{}, 2)
 		s[0] = 17
 		s[1] = s
-		GoToLua(L, nil, reflect.ValueOf(s), true)
+		GoToLua(L, s)
 		output := L.ToPointer(-1)
 		L.RawGeti(-1, 2)
 		output_1 := L.ToPointer(-1)
@@ -898,7 +898,7 @@ func TestCycleGoToLua(t *testing.T) {
 		s2[0] = 18
 		s2[1] = s
 		s[1] = s2
-		GoToLua(L, nil, reflect.ValueOf(s), true)
+		GoToLua(L, s)
 		output := L.ToPointer(-1)
 		L.RawGeti(-1, 2)
 		L.RawGeti(-1, 2)
@@ -913,7 +913,7 @@ func TestCycleGoToLua(t *testing.T) {
 		s := map[string]interface{}{}
 		s["foo"] = 17
 		s["bar"] = s
-		GoToLua(L, nil, reflect.ValueOf(s), true)
+		GoToLua(L, s)
 		output := L.ToPointer(-1)
 		L.GetField(-1, "bar")
 		output_bar := L.ToPointer(-1)
@@ -930,7 +930,7 @@ func TestCycleGoToLua(t *testing.T) {
 		s2["bar"] = 18
 		s2["baz"] = s
 		s["qux"] = s2
-		GoToLua(L, nil, reflect.ValueOf(s), true)
+		GoToLua(L, s)
 		output := L.ToPointer(-1)
 		L.GetField(-1, "qux")
 		L.GetField(-1, "baz")
@@ -946,7 +946,7 @@ func TestCycleGoToLua(t *testing.T) {
 		l2 := &list{V: 18}
 		l1.Next = l2
 		l2.Next = l1
-		GoToLua(L, nil, reflect.ValueOf(l1), true)
+		GoToLua(L, l1)
 		output_l1 := L.ToPointer(-1)
 		L.GetField(-1, "Next")
 		L.GetField(-1, "Next")
@@ -962,7 +962,7 @@ func TestCycleGoToLua(t *testing.T) {
 		l2 := &list{V: 18}
 		l1.Next = l2
 		l2.Next = l1
-		GoToLua(L, nil, reflect.ValueOf(l1), true)
+		GoToLua(L, l1)
 		// Note that root table is only repeated if we call CopyStructToTable on the
 		// pointer.
 		output_l1 := L.ToPointer(-1)

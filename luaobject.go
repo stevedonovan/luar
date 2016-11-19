@@ -42,7 +42,7 @@ func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 // NewLuaObjectFromValue creates a new LuaObject from a Go value.
 // Note that this _will_ convert any slices or maps into Lua tables.
 func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
-	GoToLua(L, nil, reflect.ValueOf(val), true)
+	GoToLua(L, val)
 	return NewLuaObject(L, -1)
 }
 
@@ -79,8 +79,8 @@ func (lo *LuaObject) GetObject(key string) *LuaObject {
 func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
 	L := lo.L
 	lo.Push() // the table
-	GoToLua(L, nil, reflect.ValueOf(idx), false)
-	GoToLua(L, nil, reflect.ValueOf(val), false)
+	GoToLuaProxy(L, idx)
+	GoToLuaProxy(L, val)
 	L.SetTable(-3)
 	L.Pop(1) // the  table
 	return val
@@ -116,7 +116,7 @@ func (lo *LuaObject) Callf(rtypes []reflect.Type, args ...interface{}) (res []in
 	res = make([]interface{}, len(rtypes))
 	lo.Push()                  // the function...
 	for _, arg := range args { // push the args
-		GoToLua(L, nil, reflect.ValueOf(arg), false)
+		GoToLuaProxy(L, arg)
 	}
 	err = L.Call(len(args), 1)
 	if err == nil {

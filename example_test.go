@@ -7,7 +7,6 @@ package luar_test
 import (
 	"fmt"
 	"log"
-	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -120,10 +119,10 @@ func ExampleGoToLua() {
 	L.OpenLibs()
 
 	input := "Hello world!"
-	luar.GoToLua(L, nil, reflect.ValueOf(input), true)
+	luar.GoToLua(L, input)
 	L.SetGlobal("input")
 
-	luar.GoToLua(L, nil, reflect.ValueOf(fmt.Println), true)
+	luar.GoToLua(L, fmt.Println)
 	L.SetGlobal("Print")
 	L.DoString("Print(input)")
 	// Output:

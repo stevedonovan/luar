@@ -100,7 +100,7 @@ func BenchmarkGoToLuaSliceInt(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -116,7 +116,7 @@ func BenchmarkGoToLuaSliceSlice(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -131,7 +131,7 @@ func BenchmarkGoToLuaSliceSliceUnique(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -146,7 +146,7 @@ func BenchmarkGoToLuaMapInt(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -162,7 +162,7 @@ func BenchmarkGoToLuaMapSlice(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -177,7 +177,7 @@ func BenchmarkGoToLuaMapSliceUnique(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }

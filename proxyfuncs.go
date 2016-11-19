@@ -144,7 +144,7 @@ func ProxyType(L *lua.State) int {
 		L.PushNil()
 		return 1
 	}
-	GoToLua(L, nil, reflect.ValueOf(v.Type()), false)
+	GoToLuaProxy(L, v.Type())
 	return 1
 }
 
@@ -159,6 +159,6 @@ func Unproxify(L *lua.State) int {
 		return 1
 	}
 	v, _ := valueOfProxy(L, 1)
-	GoToLua(L, nil, v, true)
+	GoToLua(L, v)
 	return 1
 }

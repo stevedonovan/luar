@@ -10,6 +10,7 @@ import (
 )
 
 // Lua proxy objects for Go slices, maps and structs
+// TODO: Replace by interface{}?
 type valueProxy struct {
 	value reflect.Value
 	t     reflect.Type
@@ -186,7 +187,7 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 		method = st.MethodByName(name)
 		assertValid(L, method, st, name, "method")
 	}
-	GoToLua(L, nil, method, true)
+	GoToLua(L, method)
 }
 
 // pushNumberValue pushes the number resulting from an arithmetic operation.

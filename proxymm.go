@@ -19,7 +19,7 @@ func channel__index(L *lua.State) int {
 		f := func(L *lua.State) int {
 			val, ok := v.Recv()
 			if ok {
-				GoToLua(L, nil, val, false)
+				GoToLuaProxy(L, val)
 			} else {
 				L.PushNil()
 			}
@@ -71,7 +71,7 @@ func map__index(L *lua.State) int {
 	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
 	val := v.MapIndex(key)
 	if val.IsValid() {
-		GoToLua(L, nil, val, false)
+		GoToLuaProxy(L, val)
 		return 1
 	} else if key.Kind() == reflect.String {
 		name := key.String()
@@ -97,7 +97,7 @@ func map__index(L *lua.State) int {
 				return 1
 			}
 		}
-		GoToLua(L, nil, val, true)
+		GoToLua(L, val)
 		return 1
 	}
 	return 0
@@ -131,9 +131,9 @@ func map__ipairs(L *lua.State) int {
 			L.PushNil()
 			return 1
 		}
-		GoToLua(L, nil, reflect.ValueOf(idx), false)
+		GoToLuaProxy(L, idx)
 		val := v.MapIndex(intKeys[idx])
-		GoToLua(L, nil, val, false)
+		GoToLuaProxy(L, val)
 		return 2
 	}
 	L.PushGoFunction(iter)
@@ -159,9 +159,9 @@ func map__pairs(L *lua.State) int {
 			L.PushNil()
 			return 1
 		}
-		GoToLua(L, nil, keys[idx], false)
+		GoToLuaProxy(L, keys[idx])
 		val := v.MapIndex(keys[idx])
-		GoToLua(L, nil, val, false)
+		GoToLuaProxy(L, val)
 		return 2
 	}
 	L.PushGoFunction(iter)
@@ -350,7 +350,7 @@ func slice__index(L *lua.State) int {
 			RaiseError(L, "slice/array get: index out of range")
 		}
 		v := v.Index(idx - 1)
-		GoToLua(L, nil, v, false)
+		GoToLuaProxy(L, v)
 	} else if L.IsString(2) {
 		name := L.ToString(2)
 		if v.Kind() == reflect.Array {
@@ -403,9 +403,9 @@ func slice__ipairs(L *lua.State) int {
 			L.PushNil()
 			return 1
 		}
-		GoToLua(L, nil, reflect.ValueOf(idx+1), false) // report as 1-based index
+		GoToLuaProxy(L, idx+1) // report as 1-based index
 		val := v.Index(idx)
-		GoToLua(L, nil, val, false)
+		GoToLuaProxy(L, val)
 		return 2
 	}
 	L.PushGoFunction(iter)
@@ -490,8 +490,8 @@ func string__ipairs(L *lua.State) int {
 			L.PushNil()
 			return 1
 		}
-		GoToLua(L, nil, reflect.ValueOf(idx+1), false) // report as 1-based index
-		GoToLua(L, nil, reflect.ValueOf(string(r[idx])), false)
+		GoToLuaProxy(L, idx+1) // report as 1-based index
+		GoToLuaProxy(L, string(r[idx]))
 		return 2
 	}
 	L.PushGoFunction(iter)
@@ -524,9 +524,9 @@ func struct__index(L *lua.State) int {
 		pushGoMethod(L, name, vp)
 	} else {
 		if isPointerToPrimitive(field) {
-			GoToLua(L, nil, field.Elem(), false)
+			GoToLuaProxy(L, field.Elem())
 		} else {
-			GoToLua(L, nil, field, false)
+			GoToLuaProxy(L, field)
 		}
 	}
 	return 1
