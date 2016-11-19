@@ -962,7 +962,7 @@ func TestCycleGoToLua(t *testing.T) {
 		l2 := &list{V: 18}
 		l1.Next = l2
 		l2.Next = l1
-		CopyStructToTable(L, reflect.ValueOf(l1))
+		GoToLua(L, nil, reflect.ValueOf(l1), true)
 		// Note that root table is only repeated if we call CopyStructToTable on the
 		// pointer.
 		output_l1 := L.ToPointer(-1)

@@ -1166,7 +1166,7 @@ end
 func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
-	RawRegister(L, "luar", Map{
+	Register(L, "luar", Map{
 		// Functions.
 		"unproxify":    Unproxify,
 		"map2table":    MapToTable,    // deprecated
@@ -1192,7 +1192,7 @@ func Init() *lua.State {
 		// Values.
 		"null": Null,
 	})
-	RawRegister(L, "", Map{
+	Register(L, "", Map{
 		"ipairs": ProxyIpairs,
 		"pairs":  ProxyPairs,
 	})
