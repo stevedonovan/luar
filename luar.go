@@ -1147,7 +1147,8 @@ func Lookup(L *lua.State, path string, idx int) {
 }
 
 // LuarSetup replaces the 'pairs' and 'ipairs' so they work on proxies as well.
-// TODO: Use exported functions instead.
+//
+// WARNING: Deprecated, register ProxyIpairs and ProxyPairs instead.
 const LuarSetup = `
 local opairs = pairs
 function pairs(t)
@@ -1191,7 +1192,6 @@ end
 func Init() *lua.State {
 	var L = lua.NewState()
 	L.OpenLibs()
-	_ = L.DoString(LuarSetup) // Never fails.
 	RawRegister(L, "luar", Map{
 		// Functions.
 		"unproxify":    Unproxify,
@@ -1217,6 +1217,10 @@ func Init() *lua.State {
 
 		// Values.
 		"null": Null,
+	})
+	RawRegister(L, "", Map{
+		"ipairs": ProxyIpairs,
+		"pairs":  ProxyPairs,
 	})
 	return L
 }

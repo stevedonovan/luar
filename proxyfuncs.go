@@ -96,6 +96,36 @@ func MapToTable(L *lua.State) int {
 	return CopyMapToTable(L, reflect.ValueOf(mustUnwrapProxy(L, 1)))
 }
 
+func ipairsAux(L *lua.State) int {
+	i := L.CheckInteger(2) + 1
+	L.PushInteger(int64(i))
+	L.PushInteger(int64(i))
+	L.GetTable(1)
+	if L.Type(-1) == lua.LUA_TNIL {
+		return 1
+	}
+	return 2
+}
+
+// ProxyIpairs implements Lua 5.2 'ipairs' functions.
+// It respects the __ipairs metamethod.
+//
+// It is only useful for compatibility with Lua 5.1.
+func ProxyIpairs(L *lua.State) int {
+	// See Lua >=5.2 source code.
+	if L.GetMetaField(1, "__ipairs") {
+		L.PushValue(1)
+		L.Call(1, 3)
+		return 3
+	}
+
+	L.CheckType(1, lua.LUA_TTABLE)
+	L.PushGoFunction(ipairsAux)
+	L.PushValue(1)
+	L.PushInteger(0)
+	return 3
+}
+
 // ProxyMethod pushes the proxy method on the stack.
 //
 // Argument: proxy
@@ -110,6 +140,35 @@ func ProxyMethod(L *lua.State) int {
 	name := L.ToString(2)
 	pushGoMethod(L, name, v)
 	return 1
+}
+
+func pairsAux(L *lua.State) int {
+	L.CheckType(1, lua.LUA_TTABLE)
+	L.SetTop(2) // Create a 2nd argument if there isn't one.
+	if L.Next(1) != 0 {
+		return 2
+	}
+	L.PushNil()
+	return 1
+}
+
+// ProxyPairs implements Lua 5.2 'pairs' functions.
+// It respects the __pairs metamethod.
+//
+// It is only useful for compatibility with Lua 5.1.
+func ProxyPairs(L *lua.State) int {
+	// See Lua >=5.2 source code.
+	if L.GetMetaField(1, "__pairs") {
+		L.PushValue(1)
+		L.Call(1, 3)
+		return 3
+	}
+
+	L.CheckType(1, lua.LUA_TTABLE)
+	L.PushGoFunction(pairsAux)
+	L.PushValue(1)
+	L.PushNil()
+	return 3
 }
 
 // ProxyRaw unproxifies a value.
