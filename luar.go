@@ -22,17 +22,9 @@ var (
 )
 
 var (
-	tslice    = typeof((*[]interface{})(nil))
-	tmap      = typeof((*map[string]interface{})(nil))
-	nullv     = reflect.ValueOf(Null)
-	nullables = map[reflect.Kind]bool{
-		reflect.Chan:      true,
-		reflect.Func:      true,
-		reflect.Interface: true,
-		reflect.Map:       true,
-		reflect.Ptr:       true,
-		reflect.Slice:     true,
-	}
+	tslice = typeof((*[]interface{})(nil))
+	tmap   = typeof((*map[string]interface{})(nil))
+	nullv  = reflect.ValueOf(Null)
 )
 
 // visitor holds the index to the table in LUA_REGISTRYINDEX with all the tables
@@ -124,9 +116,21 @@ func Init() *lua.State {
 	return L
 }
 
-func isNil(val reflect.Value) bool {
-	kind := val.Type().Kind()
-	return nullables[kind] && val.IsNil()
+func isNil(v reflect.Value) bool {
+	nullables := [...]bool{
+		reflect.Chan:      true,
+		reflect.Func:      true,
+		reflect.Interface: true,
+		reflect.Map:       true,
+		reflect.Ptr:       true,
+		reflect.Slice:     true,
+	}
+
+	kind := v.Type().Kind()
+	if int(kind) >= len(nullables) {
+		return false
+	}
+	return nullables[kind] && v.IsNil()
 }
 
 func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) int {
