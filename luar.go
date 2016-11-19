@@ -50,14 +50,6 @@ func isNil(val reflect.Value) bool {
 	return nullables[kind] && val.IsNil()
 }
 
-// CopyTableToSlice returns the Lua table at 'idx' as a copied Go slice.
-// If 't' is nil then the slice type is []interface{}
-//
-// WARNING: Deprecated, use LuaToGo instead.
-func CopyTableToSlice(L *lua.State, t reflect.Type, idx int) interface{} {
-	return copyTableToSlice(L, t, idx, map[uintptr]interface{}{})
-}
-
 // Also for arrays.
 func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
 	if t == nil {
@@ -120,14 +112,6 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
-// CopyTableToMap returns the Lua table at 'idx' as a copied Go map.
-// If 't' is nil then the map type is map[string]interface{}.
-//
-// WARNING: Deprecated, use LuaToGo instead.
-func CopyTableToMap(L *lua.State, t reflect.Type, idx int) interface{} {
-	return copyTableToMap(L, t, idx, map[uintptr]interface{}{})
-}
-
 func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
 	if t == nil {
 		t = tmap
@@ -156,15 +140,6 @@ func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]i
 		L.Pop(1)
 	}
 	return m.Interface()
-}
-
-// CopyTableToStruct copies matching Lua table entries to a struct, given the
-// struct type and the index on the Lua stack. Use the "lua" tag to set field
-// names.
-//
-// WARNING: Deprecated, use LuaToGo instead.
-func CopyTableToStruct(L *lua.State, t reflect.Type, idx int) interface{} {
-	return copyTableToStruct(L, t, idx, map[uintptr]interface{}{})
 }
 
 func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
@@ -221,26 +196,6 @@ func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintpt
 	return s.Elem().Interface()
 }
 
-// CopySliceToTable copies a Go slice to a Lua table.
-// 'nil' is represented as 'luar.null'.
-//
-// WARNING: Deprecated, use GoToLua instead.
-func CopySliceToTable(L *lua.State, vslice reflect.Value) int {
-	v := newVisitor(L)
-	defer v.close()
-	return copySliceToTable(L, vslice, v)
-}
-
-// CopyArrayToTable copies a Go array to a Lua table.
-// 'nil' is represented as 'luar.null'.
-//
-// WARNING: Deprecated, use GoToLua instead.
-func CopyArrayToTable(L *lua.State, v reflect.Value) int {
-	visitor := newVisitor(L)
-	defer visitor.close()
-	return copySliceToTable(L, v, visitor)
-}
-
 // Also for arrays.
 func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 	ref := vslice
@@ -272,17 +227,6 @@ func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
 	L.PushNil()
 	L.PushString("not a slice/array")
 	return 2
-}
-
-// CopyStructToTable copies a Go struct to a Lua table.
-// 'nil' is represented as 'luar.null'.
-// Use the "lua" tag to set field names.
-//
-// WARNING: Deprecated, use GoToLua instead.
-func CopyStructToTable(L *lua.State, vstruct reflect.Value) int {
-	v := newVisitor(L)
-	defer v.close()
-	return copyStructToTable(L, vstruct, v)
 }
 
 func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int {
@@ -317,15 +261,6 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int
 	L.PushNil()
 	L.PushString("not a struct")
 	return 2
-}
-
-// CopyMapToTable copies a Go map to a Lua table.
-//
-// WARNING: Deprecated, use GoToLua instead.
-func CopyMapToTable(L *lua.State, vmap reflect.Value) int {
-	v := newVisitor(L)
-	defer v.close()
-	return copyMapToTable(L, vmap, v)
 }
 
 func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) int {
@@ -800,13 +735,6 @@ func valueOfNil(ival interface{}) reflect.Value {
 	return reflect.ValueOf(ival)
 }
 
-// GoLuaFunc converts an arbitrary Go function into a Lua-compatible GoFunction.
-//
-// WARNING: Deprecated, use GoToLua instead.
-func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
-	return goLuaFunc(L, reflect.ValueOf(fun))
-}
-
 func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 	switch f := fun.Interface().(type) {
 	case func(*lua.State) int:
@@ -904,15 +832,6 @@ func Register(L *lua.State, table string, values Map) {
 	if pop {
 		L.Pop(1)
 	}
-}
-
-// RawRegister makes a number of 'raw' Go functions or values available in Lua
-// code. Raw Go functions access the Lua state directly and have signature
-// '(*lua.State) int'.
-//
-// WARNING: Deprecated, use Register instead.
-func RawRegister(L *lua.State, table string, values Map) {
-	Register(L, table, values)
 }
 
 // LuaObject encapsulates a Lua object like a table or a function.
@@ -1120,30 +1039,6 @@ func Lookup(L *lua.State, path string, idx int) {
 	}
 }
 
-// LuarSetup replaces the 'pairs' and 'ipairs' so they work on proxies as well.
-//
-// WARNING: Deprecated, register ProxyIpairs and ProxyPairs instead.
-const LuarSetup = `
-local opairs = pairs
-function pairs(t)
-	local mt = getmetatable(t)
-	if mt and mt.__pairs then
-		return mt.__pairs(t)
-	else
-		return opairs(t)
-	end
-end
-local oipairs = ipairs
-function ipairs(t)
-	local mt = getmetatable(t)
-	if mt and mt.__ipairs then
-		return mt.__ipairs(t)
-	else
-		return oipairs(t)
-	end
-end
-`
-
 // Init makes and initialize a new pre-configured Lua state.
 //
 // It populates the 'luar' table with some helper functions/values:
@@ -1168,12 +1063,7 @@ func Init() *lua.State {
 	L.OpenLibs()
 	Register(L, "luar", Map{
 		// Functions.
-		"unproxify":    Unproxify,
-		"map2table":    MapToTable,    // deprecated
-		"slice2table":  SliceToTable,  // deprecated
-		"array2table":  ArrayToTable,  // deprecated
-		"struct2table": StructToTable, // deprecated
-		"raw":          ProxyRaw,      // deprecated
+		"unproxify": Unproxify,
 
 		"method": ProxyMethod,
 		"type":   ProxyType, // TODO: Replace with the version from the 'proxytype' branch.
@@ -1182,12 +1072,6 @@ func Init() *lua.State {
 		"complex": Complex,
 		"map":     MakeMap,
 		"slice":   MakeSlice,
-
-		"real": ComplexReal, // deprecated
-		"imag": ComplexImag, // deprecated
-
-		"sub":    SliceSub,    // deprecated
-		"append": SliceAppend, // deprecated
 
 		// Values.
 		"null": Null,

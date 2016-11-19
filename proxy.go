@@ -176,14 +176,6 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 	GoToLua(L, nil, method, true)
 }
 
-// InitProxies sets up a Lua state for using Go<->Lua proxies.
-// This need not be called if the Lua state was created with Init().
-// This function is useful if you want to set up your Lua state manually, e.g.
-// with a custom allocator.
-//
-// WARNING: Deprecated, this function is not needed anymore.
-func InitProxies(L *lua.State) {}
-
 // From Lua's specs: "A metamethod only is selected when both objects being
 // compared have the same type and the same metamethod for the selected
 // operation." Thus both arguments must be proxies for this function to be
