@@ -157,8 +157,8 @@ func mustUnwrapProxy(L *lua.State, idx int) interface{} {
 }
 
 func pushGoMethod(L *lua.State, name string, st reflect.Value) {
-	ret := st.MethodByName(name)
-	if !ret.IsValid() {
+	method := st.MethodByName(name)
+	if !method.IsValid() {
 		T := st.Type()
 		// Could not resolve this method. Perhaps it's defined on the pointer?
 		if T.Kind() != reflect.Ptr {
@@ -170,10 +170,10 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 				st = VP
 			}
 		}
-		ret = st.MethodByName(name)
-		assertValid(L, ret, st, name, "method")
+		method = st.MethodByName(name)
+		assertValid(L, method, st, name, "method")
 	}
-	GoToLua(L, nil, ret, true)
+	GoToLua(L, nil, method, true)
 }
 
 // InitProxies sets up a Lua state for using Go<->Lua proxies.
@@ -221,8 +221,8 @@ func slice__index(L *lua.State) int {
 		if idx < 1 || idx > v.Len() {
 			RaiseError(L, "slice/array get: index out of range")
 		}
-		ret := v.Index(idx - 1)
-		GoToLua(L, nil, ret, false)
+		v := v.Index(idx - 1)
+		GoToLua(L, nil, v, false)
 	} else if L.IsString(2) {
 		name := L.ToString(2)
 		if v.Kind() == reflect.Array {
@@ -419,15 +419,15 @@ func struct__index(L *lua.State) int {
 	if t.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-	ret := v.FieldByName(name)
-	if !ret.IsValid() || !ret.CanSet() {
+	field := v.FieldByName(name)
+	if !field.IsValid() || !field.CanSet() {
 		// No such exported field, try for method.
 		pushGoMethod(L, name, vp)
 	} else {
-		if isPointerToPrimitive(ret) {
-			GoToLua(L, nil, ret.Elem(), false)
+		if isPointerToPrimitive(field) {
+			GoToLua(L, nil, field.Elem(), false)
 		} else {
-			GoToLua(L, nil, ret, false)
+			GoToLua(L, nil, field, false)
 		}
 	}
 	return 1
