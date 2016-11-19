@@ -298,7 +298,7 @@ func map__index(L *lua.State) int {
 	} else if key.Kind() == reflect.String {
 		name := key.String()
 
-		// From 'callGoMethod':
+		// From 'pushGoMethod':
 		val := v.MethodByName(name)
 		if !val.IsValid() {
 			T := v.Type()
@@ -313,7 +313,7 @@ func map__index(L *lua.State) int {
 				}
 			}
 			val = v.MethodByName(name)
-			// Unlike 'callGoMethod', do not panic.
+			// Unlike 'pushGoMethod', do not panic.
 			if !val.IsValid() {
 				L.PushNil()
 				return 1
@@ -684,7 +684,6 @@ func number__unm(L *lua.State) int {
 		result = -v1.Complex()
 	}
 	v := reflect.ValueOf(result)
-	// TODO: Call GoToLua?
 	if unsizedKind(v1) == reflect.Complex128 {
 		makeValueProxy(L, v.Convert(t1), cComplexMeta)
 	} else if predeclaredScalarType(t1) != nil {
