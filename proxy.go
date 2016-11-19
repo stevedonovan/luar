@@ -162,9 +162,11 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 		T := st.Type()
 		// Could not resolve this method. Perhaps it's defined on the pointer?
 		if T.Kind() != reflect.Ptr {
-			if st.CanAddr() { // easy if we can get a pointer directly
+			if st.CanAddr() {
+				// If we can get a pointer directly.
 				st = st.Addr()
-			} else { // otherwise have to create and initialize one...
+			} else {
+				// Otherwise create and initialize one.
 				VP := reflect.New(T)
 				VP.Elem().Set(st)
 				st = VP
@@ -296,9 +298,9 @@ func map__index(L *lua.State) int {
 			T := v.Type()
 			// Could not resolve this method. Perhaps it's defined on the pointer?
 			if T.Kind() != reflect.Ptr {
-				if v.CanAddr() { // easy if we can get a pointer directly
+				if v.CanAddr() {
 					v = v.Addr()
-				} else { // otherwise have to create and initialize one...
+				} else {
 					vp := reflect.New(T)
 					vp.Elem().Set(v)
 					v = vp
