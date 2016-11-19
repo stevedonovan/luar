@@ -173,7 +173,7 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 		ret = st.MethodByName(name)
 		assertValid(L, ret, st, name, "method")
 	}
-	L.PushGoFunction(GoLuaFunc(L, ret))
+	GoToLua(L, nil, ret, true)
 }
 
 // InitProxies sets up a Lua state for using Go<->Lua proxies.
@@ -319,7 +319,7 @@ func map__index(L *lua.State) int {
 				return 1
 			}
 		}
-		L.PushGoFunction(GoLuaFunc(L, val))
+		GoToLua(L, nil, val, true)
 		return 1
 	}
 	return 0

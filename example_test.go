@@ -220,7 +220,7 @@ func ExampleGoToLua() {
 	luar.GoToLua(L, nil, reflect.ValueOf(input), true)
 	L.SetGlobal("input")
 
-	L.PushGoFunction(luar.GoLuaFunc(L, fmt.Println))
+	luar.GoToLua(L, nil, reflect.ValueOf(fmt.Println), true)
 	L.SetGlobal("Print")
 	L.DoString("Print(input)")
 	// Output:

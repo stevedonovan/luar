@@ -570,6 +570,8 @@ func goToLua(L *lua.State, t reflect.Type, val reflect.Value, dontproxify bool, 
 		}
 	case reflect.Chan:
 		makeValueProxy(L, ptrVal, cChannelMeta)
+	case reflect.Func:
+		L.PushGoFunction(goLuaFunc(L, val))
 	default:
 		if v, ok := val.Interface().(error); ok {
 			L.PushString(v.Error())
@@ -799,36 +801,19 @@ func valueOfNil(ival interface{}) reflect.Value {
 }
 
 // GoLuaFunc converts an arbitrary Go function into a Lua-compatible GoFunction.
-// There are special optimized cases for functions that go from strings to
-// strings, and doubles to doubles, but otherwise Go reflection is used to
-// provide a generic wrapper function.
+//
+// WARNING: Deprecated, use GoToLua instead.
 func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
-	// TODO: Merge in GoToLua and deprecate this + RawRegister.
-	switch f := fun.(type) {
+	return goLuaFunc(L, reflect.ValueOf(fun))
+}
+
+func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
+	switch f := fun.Interface().(type) {
 	case func(*lua.State) int:
 		return f
-	case func(string) string:
-		return func(L *lua.State) int {
-			L.PushString(f(L.ToString(1)))
-			return 1
-		}
-	case func(float64) float64:
-		return func(L *lua.State) int {
-			L.PushNumber(f(L.ToNumber(1)))
-			return 1
-		}
-	default:
 	}
 
-	var funV reflect.Value
-	switch ff := fun.(type) {
-	case reflect.Value:
-		funV = ff
-	default:
-		funV = reflect.ValueOf(fun)
-	}
-
-	funT := funV.Type()
+	funT := fun.Type()
 	tArgs := make([]reflect.Type, funT.NumIn())
 	for i := range tArgs {
 		tArgs[i] = funT.In(i)
@@ -859,7 +844,7 @@ func GoLuaFunc(L *lua.State, fun interface{}) lua.LuaGoFunction {
 			}
 			tArgs = origTArgs
 		}
-		resV := callGo(L, funV, args)
+		resV := callGo(L, fun, args)
 		for _, val := range resV {
 			if val.Kind() == reflect.Struct {
 				// If the function returns a struct (and not a pointer to a struct),
@@ -889,7 +874,16 @@ func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Va
 // Map is an alias for passing maps of strings to values to luar.
 type Map map[string]interface{}
 
-func register(L *lua.State, table string, values Map, convertFun bool) {
+// Register makes a number of Go values available in Lua code.
+// 'values' is a map of strings to Go values.
+//
+// - If table is non-nil, then create or reuse a global table of that name and
+// put the values in it.
+//
+// - If table is '' then put the values in the global table (_G).
+//
+// - If table is '*' then assume that the table is already on the stack.
+func Register(L *lua.State, table string, values Map) {
 	pop := true
 	if table == "*" {
 		pop = false
@@ -904,16 +898,7 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 		L.GetGlobal("_G")
 	}
 	for name, val := range values {
-		if t := reflect.TypeOf(val); t != nil && t.Kind() == reflect.Func {
-			if convertFun {
-				L.PushGoFunction(GoLuaFunc(L, val))
-			} else {
-				lf := val.(func(*lua.State) int)
-				L.PushGoFunction(lf)
-			}
-		} else {
-			GoToLua(L, nil, reflect.ValueOf(val), false)
-		}
+		GoToLua(L, nil, reflect.ValueOf(val), false)
 		L.SetField(-2, name)
 	}
 	if pop {
@@ -924,21 +909,10 @@ func register(L *lua.State, table string, values Map, convertFun bool) {
 // RawRegister makes a number of 'raw' Go functions or values available in Lua
 // code. Raw Go functions access the Lua state directly and have signature
 // '(*lua.State) int'.
+//
+// WARNING: Deprecated, use Register instead.
 func RawRegister(L *lua.State, table string, values Map) {
-	register(L, table, values, false)
-}
-
-// Register makes a number of Go functions or values available in Lua code.
-// 'values' is a map of strings to Go values.
-//
-// - If table is non-nil, then create or reuse a global table of that name and
-// put the values in it.
-//
-// - If table is '' then put the values in the global table (_G).
-//
-// - If table is '*' then assume that the table is already on the stack.
-func Register(L *lua.State, table string, values Map) {
-	register(L, table, values, true)
+	Register(L, table, values)
 }
 
 // LuaObject encapsulates a Lua object like a table or a function.
