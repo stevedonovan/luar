@@ -133,92 +133,74 @@ func isNil(v reflect.Value) bool {
 	return nullables[kind] && v.IsNil()
 }
 
-func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) int {
-	if vmap.IsValid() && vmap.Type().Kind() == reflect.Map {
-		n := vmap.Len()
-		L.CreateTable(0, n)
-		visited.mark(vmap)
-		for _, key := range vmap.MapKeys() {
-			v := vmap.MapIndex(key)
-			goToLua(L, key, true, visited)
-			if isNil(v) {
-				v = nullv
-			}
-			goToLua(L, v, false, visited)
-			L.SetTable(-3)
+func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) {
+	n := vmap.Len()
+	L.CreateTable(0, n)
+	visited.mark(vmap)
+	for _, key := range vmap.MapKeys() {
+		v := vmap.MapIndex(key)
+		goToLua(L, key, true, visited)
+		if isNil(v) {
+			v = nullv
 		}
-		return 1
+		goToLua(L, v, false, visited)
+		L.SetTable(-3)
 	}
-	L.PushNil()
-	L.PushString("not a map!")
-	return 2
 }
 
 // Also for arrays.
-func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) int {
+func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) {
 	ref := vslice
 	for vslice.Kind() == reflect.Ptr {
 		// For arrays.
 		vslice = vslice.Elem()
 	}
 
-	if vslice.IsValid() && (vslice.Kind() == reflect.Slice || vslice.Kind() == reflect.Array) {
-		n := vslice.Len()
-		L.CreateTable(n, 0)
-		if vslice.Kind() == reflect.Slice {
-			visited.mark(vslice)
-		} else if ref.Kind() == reflect.Ptr {
-			visited.mark(ref)
-		}
-
-		for i := 0; i < n; i++ {
-			L.PushInteger(int64(i + 1))
-			v := vslice.Index(i)
-			if isNil(v) {
-				v = nullv
-			}
-			goToLua(L, v, false, visited)
-			L.SetTable(-3)
-		}
-		return 1
+	n := vslice.Len()
+	L.CreateTable(n, 0)
+	if vslice.Kind() == reflect.Slice {
+		visited.mark(vslice)
+	} else if ref.Kind() == reflect.Ptr {
+		visited.mark(ref)
 	}
-	L.PushNil()
-	L.PushString("not a slice/array")
-	return 2
+
+	for i := 0; i < n; i++ {
+		L.PushInteger(int64(i + 1))
+		v := vslice.Index(i)
+		if isNil(v) {
+			v = nullv
+		}
+		goToLua(L, v, false, visited)
+		L.SetTable(-3)
+	}
 }
 
-func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) int {
+func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) {
 	// If 'vstruct' is a pointer to struct, use the pointer to mark as visited.
 	ref := vstruct
 	for vstruct.Kind() == reflect.Ptr {
 		vstruct = vstruct.Elem()
 	}
 
-	if vstruct.IsValid() && vstruct.Type().Kind() == reflect.Struct {
-		n := vstruct.NumField()
-		L.CreateTable(n, 0)
-		if ref.Kind() == reflect.Ptr {
-			visited.mark(ref)
-		}
-
-		for i := 0; i < n; i++ {
-			st := vstruct.Type()
-			field := st.Field(i)
-			key := field.Name
-			tag := field.Tag.Get("lua")
-			if tag != "" {
-				key = tag
-			}
-			goToLua(L, key, false, visited)
-			v := vstruct.Field(i)
-			goToLua(L, v, false, visited)
-			L.SetTable(-3)
-		}
-		return 1
+	n := vstruct.NumField()
+	L.CreateTable(n, 0)
+	if ref.Kind() == reflect.Ptr {
+		visited.mark(ref)
 	}
-	L.PushNil()
-	L.PushString("not a struct")
-	return 2
+
+	for i := 0; i < n; i++ {
+		st := vstruct.Type()
+		field := st.Field(i)
+		key := field.Name
+		tag := field.Tag.Get("lua")
+		if tag != "" {
+			key = tag
+		}
+		goToLua(L, key, false, visited)
+		v := vstruct.Field(i)
+		goToLua(L, v, false, visited)
+		L.SetTable(-3)
+	}
 }
 
 func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Value {
