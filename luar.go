@@ -773,13 +773,3 @@ func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name strin
 func typeof(v interface{}) reflect.Type {
 	return reflect.TypeOf(v).Elem()
 }
-
-// Types is a convenience function for converting a set of values into a
-// corresponding slice of their types.
-func Types(values ...interface{}) []reflect.Type {
-	res := make([]reflect.Type, len(values))
-	for i, arg := range values {
-		res[i] = reflect.TypeOf(arg)
-	}
-	return res
-}
