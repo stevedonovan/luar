@@ -353,8 +353,8 @@ func goToLua(L *lua.State, v interface{}, proxify bool, visited visitor) {
 		return
 	}
 
-	// As a special case, we always proxify nullv, the empty element for slices and maps.
-	if val.CanInterface() && val.Interface() == nullv.Interface() {
+	// As a special case, we always proxify Null, the empty element for slices and maps.
+	if val.CanInterface() && val.Interface() == Null {
 		makeValueProxy(L, val, cInterfaceMeta)
 		return
 	}
@@ -493,7 +493,7 @@ func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uint
 		luaToGo(L, -2, key, visited)
 		val := reflect.New(te).Elem()
 		luaToGo(L, -1, val, visited)
-		if val.Interface() == nullv.Interface() {
+		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
 		m.SetMapIndex(key, val)
@@ -536,7 +536,7 @@ func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[ui
 		L.RawGeti(idx, i)
 		val := reflect.New(te).Elem()
 		luaToGo(L, -1, val, visited)
-		if val.Interface() == nullv.Interface() {
+		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
 		slice.Index(i - 1).Set(val)
