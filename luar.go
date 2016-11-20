@@ -458,7 +458,7 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
-func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
 	t := value.Type()
 	if value.Kind() == reflect.Interface {
 		t = tmap
@@ -469,7 +469,7 @@ func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uint
 	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
-		visited[ptr] = m.Interface()
+		visited[ptr] = m
 	}
 
 	L.PushNil()
@@ -501,8 +501,8 @@ func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uint
 	return nil
 }
 
-// Also for arrays.
-func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+// Also for arrays. TODO: Create special function for arrays?
+func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
 	t := value.Type()
 	if value.Kind() == reflect.Interface {
 		t = tslice
@@ -524,7 +524,7 @@ func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[ui
 	// Arrays cannot be cyclic since the interface type will ask for slices.
 	if n > 0 && t.Kind() != reflect.Array {
 		ptr := L.ToPointer(idx)
-		visited[ptr] = slice.Interface()
+		visited[ptr] = slice
 	}
 
 	te := t.Elem()
@@ -547,7 +547,7 @@ func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[ui
 	return nil
 }
 
-func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
 	t := value.Type()
 	// TODO: Use on 'value' directly? Yes.
 	ref := reflect.New(t).Elem()
@@ -556,7 +556,7 @@ func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[u
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
 		// TODO: If we don't handle pointers, then no need for visited.
-		visited[ptr] = ref.Addr().Interface()
+		visited[ptr] = ref.Addr()
 	}
 
 	// Associate Lua keys with Go fields: tags have priority over matching field
@@ -602,16 +602,17 @@ func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[u
 // Return an error if 'v' is not a non-nil pointer.
 func LuaToGo(L *lua.State, idx int, v interface{}) error {
 	// TODO: For now, unwrapping proxies require the same type. If we keep that behaviour, document it.
+	// TODO: Rename 'value' -> 'v', 'v' -> 'arg'
 	value := reflect.ValueOf(v)
 	// TODO: Allow unreferenced map? json does not do it...
 	if value.Kind() != reflect.Ptr {
 		return errors.New("not a pointer")
 	}
 	value = value.Elem()
-	return luaToGo(L, idx, value, map[uintptr]interface{}{})
+	return luaToGo(L, idx, value, map[uintptr]reflect.Value{})
 }
 
-func luaToGo(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+func luaToGo(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
 	kind := value.Kind()
 
 	switch L.Type(idx) {
@@ -663,11 +664,9 @@ func luaToGo(L *lua.State, idx int, value reflect.Value, visited map[uintptr]int
 	case lua.LUA_TTABLE:
 		// TODO: Check what happens if visited is not of the right type.
 		// TODO: Check cyclic arrays / structs.
-		// TODO: visited should hold reflect.Values.
 		ptr := L.ToPointer(idx)
 		if val, ok := visited[ptr]; ok {
-			v := reflect.ValueOf(val)
-			value.Set(v)
+			value.Set(val)
 			return nil
 		}
 		switch kind {
