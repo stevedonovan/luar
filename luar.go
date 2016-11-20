@@ -479,9 +479,17 @@ func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uint
 	for L.Next(idx) != 0 {
 		// key at -2, value at -1
 		key := reflect.New(tk).Elem()
-		luaToGo(L, -2, key, visited)
+		err := luaToGo(L, -2, key, visited)
+		if err != nil {
+			L.Pop(2) // TODO: test this!
+			return err
+		}
 		val := reflect.New(te).Elem()
-		luaToGo(L, -1, val, visited)
+		err = luaToGo(L, -1, val, visited)
+		if err != nil {
+			L.Pop(2)
+			return err
+		}
 		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
@@ -490,7 +498,6 @@ func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uint
 	}
 
 	value.Set(m)
-	// TODO: Return nothing as it always succeeds? Make sure of that. Compare to other copy* funcs.
 	return nil
 }
 
@@ -524,7 +531,11 @@ func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[ui
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
 		val := reflect.New(te).Elem()
-		luaToGo(L, -1, val, visited)
+		err := luaToGo(L, -1, val, visited)
+		if err != nil {
+			L.Pop(1)
+			return err
+		}
 		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
@@ -571,7 +582,11 @@ func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[u
 		f := ref.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
 			val := reflect.New(f.Type()).Elem()
-			luaToGo(L, -1, val, visited)
+			err := luaToGo(L, -1, val, visited)
+			if err != nil {
+				L.Pop(2) // TODO: Test this!
+				return err
+			}
 			f.Set(val)
 		}
 		L.Pop(1)
