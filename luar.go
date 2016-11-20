@@ -224,17 +224,6 @@ func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Va
 	return resv
 }
 
-// Elegant little 'cheat' suggested by Kyle Lemons, avoiding the 'Call using
-// zero Value argument' problem.
-// See http://play.golang.org/p/TZyOLzu2y-.
-// TODO: Delete as it is not needed anymore.
-func valueOfNil(ival interface{}) reflect.Value {
-	if ival == nil {
-		return reflect.ValueOf(&ival).Elem()
-	}
-	return reflect.ValueOf(ival)
-}
-
 func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 	switch f := fun.Interface().(type) {
 	case func(*lua.State) int:
