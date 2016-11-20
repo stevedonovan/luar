@@ -17,15 +17,6 @@ type LuaObject struct {
 	Type string
 }
 
-// Global creates a new LuaObject refering to the global environment.
-func Global(L *lua.State) *LuaObject {
-	// TODO: Remove this function.
-	L.GetGlobal("_G")
-	val := NewLuaObject(L, -1)
-	L.Pop(1)
-	return val
-}
-
 // NewLuaObject creates a new LuaObject from stack index.
 func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	tp := L.LTypename(idx)

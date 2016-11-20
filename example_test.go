@@ -404,7 +404,7 @@ func ExampleRegister_sandbox() {
 		"Print": fmt.Println,
 	})
 	env := luar.NewLuaObject(L, -1)
-	G := luar.Global(L)
+	G := luar.NewLuaObjectFromName(L, "_G")
 
 	// We can copy any Lua object from "G" to env with 'Set', e.g.:
 	//   env.Set("print", G.Get("print"))
