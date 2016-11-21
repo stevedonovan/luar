@@ -18,10 +18,10 @@ import (
 func Example() {
 	const test = `
 for i = 1, 3 do
-		Print(msg, i)
+		print(msg, i)
 end
-Print(user)
-Print(user.Name, user.Age)
+print(user)
+print(user.Name, user.Age)
 `
 
 	type person struct {
@@ -36,7 +36,7 @@ Print(user.Name, user.Age)
 
 	luar.Register(L, "", luar.Map{
 		// Go functions may be registered directly.
-		"Print": fmt.Println,
+		"print": fmt.Println,
 		// Constants can be registered.
 		"msg": "foo",
 		// And other values as well.
@@ -52,11 +52,11 @@ Print(user.Name, user.Age)
 	// Dolly 46
 }
 
+// Pointers to structs and structs within pointers are automatically dereferenced.
 func Example_pointers() {
 	const test = `
--- Pointers to structs and structs within pointers are automatically dereferenced.
 local t = newRef()
-Print(t.Index, t.Number, t.Title)
+print(t.Index, t.Number, t.Title)
 `
 
 	type Ref struct {
@@ -77,7 +77,7 @@ Print(t.Index, t.Number, t.Title)
 	defer L.Close()
 
 	luar.Register(L, "", luar.Map{
-		"Print":  fmt.Println,
+		"print":  fmt.Println,
 		"newRef": newRef,
 	})
 
@@ -86,11 +86,11 @@ Print(t.Index, t.Number, t.Title)
 	// 17 10 foo
 }
 
-// Slices must be looped with 'ipairs'.
+// Slices must be looped over with 'ipairs'.
 func Example_slices() {
 	const test = `
 for i, v in ipairs(names) do
-	 Print(i, v)
+	 print(i, v)
 end
 `
 
@@ -100,7 +100,7 @@ end
 	names := []string{"alfred", "alice", "bob", "frodo"}
 
 	luar.Register(L, "", luar.Map{
-		"Print": fmt.Println,
+		"print": fmt.Println,
 		"names": names,
 	})
 
@@ -112,8 +112,8 @@ end
 	// 4 frodo
 }
 
+// Init() is not needed when no proxy is involved.
 func ExampleGoToLua() {
-	// The luar's Init function is only required for proxy use.
 	L := lua.NewState()
 	defer L.Close()
 	L.OpenLibs()
@@ -123,23 +123,25 @@ func ExampleGoToLua() {
 	L.SetGlobal("input")
 
 	luar.GoToLua(L, fmt.Println)
-	L.SetGlobal("Print")
-	L.DoString("Print(input)")
+	L.SetGlobal("print")
+	L.DoString("print(input)")
 	// Output:
 	// Hello world!
 }
 
 // This example shows how Go slices and maps are marshalled to Lua tables and
-// vice versa. This requires the Lua state to be initialized with `luar.Init()`.
+// vice versa.
 //
 // An arbitrary Go function is callable from Lua, and list-like tables become
 // slices on the Go side. The Go function returns a map, which is wrapped as a
 // proxy object. You can however then copy this to a Lua table explicitly. There
 // is also `luar.unproxify` on the Lua side.
+//
+// We initialize the state with Init() to register Unproxify() as 'luar.unproxify()'.
 func ExampleInit() {
 	const code = `
--- Lua tables auto-convert to slices.
-local res = foo {10,20,30,40}
+-- Lua tables auto-convert to slices in Go-function calls.
+local res = foo {10, 20, 30, 40}
 
 -- The result is a map-proxy.
 print(res['1'], res['2'])
@@ -185,7 +187,7 @@ func ExampleLuaObject_Call() {
 
 	const code = `
 function return_strings()
-    return {'one', luar.null, 'three'}
+	return {'one', luar.null, 'three'}
 end`
 
 	err := L.DoString(code)
@@ -225,7 +227,7 @@ print(M.three)
 	defer L.Close()
 
 	M := luar.Map{
-		"one":   "ein",
+		"one":   "eins",
 		"two":   "zwei",
 		"three": "drei",
 	}
@@ -241,17 +243,55 @@ print(M.three)
 	}
 	// Output:
 	// 3
-	// ein
+	// eins
 	// zwei
 	// drei
 }
 
-// Another way to do parse configs: using LuaObject to manipulate the table.
+func ExampleMakeChan() {
+	L1 := luar.Init()
+	defer L1.Close()
+	L2 := luar.Init()
+	defer L2.Close()
+
+	luar.MakeChan(L1)
+	L1.SetGlobal("c")
+	L1.GetGlobal("c")
+	var c interface{}
+	err := luar.LuaToGo(L1, -1, &c)
+	L1.Pop(1)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	luar.Register(L2, "", luar.Map{"c": c})
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		err := L1.DoString(`c.send(17)`)
+		if err != nil {
+			fmt.Println(err)
+		}
+		wg.Done()
+	}()
+
+	err = L2.DoString(`return c.recv()`)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(L2.ToNumber(-1))
+	L2.Pop(1)
+	wg.Wait()
+	// Output:
+	// 17
+}
+
+// Another way to do parse configs: use a LuaObject to manipulate the table.
 func ExampleNewLuaObject() {
 	L := luar.Init()
 	defer L.Close()
 
-	// Using Lua to parse configuration files.
 	const config = `return {
 	baggins = true,
 	age = 24,
@@ -335,21 +375,21 @@ func ExampleNewLuaObjectFromValue() {
 		"HOME": "where you belong",
 	})
 	var res string
-	err := gsub.Call(&res, "hello $NAME go $HOME", "%$(%u+)", gmap)
+	err := gsub.Call(&res, "Hello $NAME, go $HOME", "%$(%u+)", gmap)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Println(res)
 	// Output:
-	// hello Dolly go where you belong
+	// Hello Dolly, go where you belong
 }
 
 func ExampleLuaTableIter_Next() {
 	const code = `
 return {
-  foo = 17,
-  bar = 18,
+	foo = 17,
+	bar = 18,
 }
 `
 
@@ -383,9 +423,9 @@ return {
 
 func ExampleRegister_sandbox() {
 	const code = `
-    Print("foo")
-    Print(io ~= nil)
-    Print(os == nil)
+print("foo")
+print(io ~= nil)
+print(os == nil)
 `
 
 	L := luar.Init()
@@ -401,7 +441,7 @@ func ExampleRegister_sandbox() {
 	L.NewTable()
 	// "*" means "use table on top of the stack."
 	luar.Register(L, "*", luar.Map{
-		"Print": fmt.Println,
+		"print": fmt.Println,
 	})
 	env := luar.NewLuaObject(L, -1)
 	G := luar.NewLuaObjectFromName(L, "_G")
@@ -409,7 +449,7 @@ func ExampleRegister_sandbox() {
 	// We can copy any Lua object from "G" to env with 'Set', e.g.:
 	//   env.Set("print", G.Get("print"))
 	// A more convenient and efficient way is to do a bulk copy with 'Setv':
-	env.Setv(G, "print", "io")
+	env.Setv(G, "type", "io")
 
 	// Set up sandbox.
 	L.SetfEnv(-2)
@@ -417,58 +457,10 @@ func ExampleRegister_sandbox() {
 	// Run 'code' chunk.
 	err := L.Call(0, 0)
 	if err != nil {
-		fmt.Println("could not run", err)
+		log.Fatal(err)
 	}
 	// Output:
 	// foo
 	// true
 	// true
-}
-
-func ExampleMakeChan() {
-	L1 := luar.Init()
-	defer L1.Close()
-	L2 := luar.Init()
-	defer L2.Close()
-
-	luar.MakeChan(L1)
-	L1.SetGlobal("c")
-	L1.GetGlobal("c")
-	var c interface{}
-	err := luar.LuaToGo(L1, -1, &c)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	luar.Register(L2, "", luar.Map{
-		"c":     c,
-		"Print": fmt.Println,
-	})
-
-	const code1 = `
-c.send(17)
-`
-
-	const code2 = `
-v = c.recv()
-Print(v)
-`
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		err := L1.DoString(code1)
-		if err != nil {
-			fmt.Println(err)
-		}
-		wg.Done()
-	}()
-
-	err = L2.DoString(code2)
-	if err != nil {
-		fmt.Println(err)
-	}
-	wg.Wait()
-	// Output:
-	// 17
 }
