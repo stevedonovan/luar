@@ -251,7 +251,7 @@ func goToLuaFunction(L *lua.State, v reflect.Value) lua.LuaGoFunction {
 			val := reflect.New(t)
 			err := LuaToGo(L, i+1, val.Interface())
 			if err != nil {
-				RaiseError(L, "cannot convert go function arguments: %v", err)
+				RaiseError(L, "cannot convert go function argument #%v: %v", i, err)
 			}
 			args[i] = val.Elem()
 		}
@@ -262,7 +262,7 @@ func goToLuaFunction(L *lua.State, v reflect.Value) lua.LuaGoFunction {
 				val := reflect.New(lastT)
 				err := LuaToGo(L, i, val.Interface())
 				if err != nil {
-					RaiseError(L, "cannot convert go function arguments: %v", err)
+					RaiseError(L, "cannot convert go function argument #%v: %v", i, err)
 				}
 				args = append(args, val.Elem())
 			}
