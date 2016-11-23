@@ -627,8 +627,7 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 		key := L.ToString(-1)
 		L.Pop(1)
 		f := v.FieldByName(fields[key])
-		// TODO: Remove f.IsValid().
-		if f.CanSet() && f.IsValid() {
+		if f.CanSet() {
 			val := reflect.New(f.Type()).Elem()
 			err := luaToGo(L, -1, val, visited)
 			if err != nil {
