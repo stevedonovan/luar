@@ -597,22 +597,19 @@ func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintpt
 
 func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) (status error) {
 	t := v.Type()
-	// TODO: Use on 'value' directly? Yes.
-	s := reflect.New(t).Elem()
 
 	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
 		// TODO: If we don't handle pointers, then no need for visited.
-		visited[ptr] = s.Addr()
+		visited[ptr] = v.Addr()
 	}
 
 	// Associate Lua keys with Go fields: tags have priority over matching field
 	// name.
 	fields := map[string]string{}
-	st := s.Type()
-	for i := 0; i < s.NumField(); i++ {
-		field := st.Field(i)
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
 		tag := field.Tag.Get("lua")
 		if tag != "" {
 			fields[tag] = field.Name
@@ -627,13 +624,13 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 	}
 	for L.Next(idx) != 0 {
 		key := L.ToString(-2)
-		f := s.FieldByName(fields[key])
+		f := v.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
 			val := reflect.New(f.Type()).Elem()
 			err := luaToGo(L, -1, val, visited)
 			if err != nil {
 				status = ErrTableConv
-				L.Pop(1) // TODO: Test this!
+				L.Pop(1)
 				continue
 			}
 			f.Set(val)
@@ -641,7 +638,6 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 		L.Pop(1)
 	}
 
-	v.Set(s)
 	return
 }
 
