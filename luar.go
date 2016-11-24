@@ -492,12 +492,12 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
-func luaMapLen(L *lua.State, idx int) uint {
+func luaMapLen(L *lua.State, idx int) int {
 	L.PushNil()
 	if idx < 0 {
 		idx--
 	}
-	len := uint(0)
+	len := 0
 	for L.Next(idx) != 0 {
 		len++
 		L.Pop(1)
@@ -772,19 +772,21 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		case reflect.Struct:
 			return copyTableToStruct(L, idx, v, visited)
 		case reflect.Interface:
+			n := int(L.ObjLen(idx))
+
 			if v.Elem().Kind() == reflect.Map {
 				return copyTableToMap(L, idx, v.Elem(), visited)
 			} else if v.Elem().Kind() == reflect.Slice {
-				// TODO: Test this.
-				return copyTableToSlice(L, idx, v, visited)
+				// Need to make/resize the slice here since interface values are not adressable.
+				v.Set(reflect.MakeSlice(v.Elem().Type(), n, n))
+				return copyTableToSlice(L, idx, v.Elem(), visited)
 			}
 
-			if luaMapLen(L, idx) != L.ObjLen(idx) {
+			if luaMapLen(L, idx) != n {
 				v.Set(reflect.MakeMap(tmap))
 				return copyTableToMap(L, idx, v.Elem(), visited)
 			}
-			// TODO: test this.
-			v.Set(reflect.MakeSlice(tslice, 0, 0))
+			v.Set(reflect.MakeSlice(tslice, n, n))
 			return copyTableToSlice(L, idx, v.Elem(), visited)
 		default:
 			return ConvError{From: luaDesc(L, idx), To: v}
