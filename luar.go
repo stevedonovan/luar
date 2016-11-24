@@ -538,9 +538,6 @@ func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]
 			L.Pop(1)
 			continue
 		}
-		if val.Interface() == Null {
-			val = reflect.Zero(te)
-		}
 		v.SetMapIndex(key, val)
 		L.Pop(1)
 	}
@@ -590,9 +587,6 @@ func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintpt
 			status = ErrTableConv
 			L.Pop(1)
 			continue
-		}
-		if val.Interface() == Null {
-			val = reflect.Zero(te)
 		}
 		v.Index(i - 1).Set(val)
 		L.Pop(1)
