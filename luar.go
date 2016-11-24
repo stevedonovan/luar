@@ -648,7 +648,7 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 //
 // The Go value must be a non-nil pointer.
 //
-// Conversion to string and numbers is straightforward.
+// Conversions to string and numbers are straightforward.
 //
 // Lua 'nil' is converted to the zero value of the specified Go value.
 //
@@ -663,9 +663,9 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 //
 // Nil maps and slices are automatically allocated.
 //
-// If the Lua value is a userdata, LuaToGo will unwrap it in the Go value.
-// If the Lua value is a userdata that is not a proxy and the Go value is an
-// interface, the Go value will be set to a LuaObject.
+// Proxies are unwrapped to the Go value, if convertible.
+// Userdata that is not a proxy will be converted to a LuaObject if the Go value
+// is an interface or a LuaObject.
 func LuaToGo(L *lua.State, idx int, a interface{}) error {
 	// LuaToGo should not pop the Lua stack to be consistent with L.ToString(), etc.
 	// It is also easier in practice when we want to keep working with the value on stack.
