@@ -16,6 +16,11 @@ type ConvError struct {
 	To   interface{}
 }
 
+// ErrTableConv arises when some table entries could not be converted.
+// The table conversion result is usable.
+// TODO: Work out an apt name.
+var ErrTableConv = errors.New("some table elements could not be converted")
+
 func (l ConvError) Error() string {
 	return fmt.Sprintf("cannot convert %v to %v", l.From, l.To)
 }
@@ -486,18 +491,20 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
-func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) (status error) {
 	t := v.Type()
 	if v.Kind() == reflect.Interface {
 		t = tmap
+		v.Set(reflect.MakeMap(t))
+	} else if v.IsNil() {
+		v.Set(reflect.MakeMap(t))
 	}
 	te, tk := t.Elem(), t.Key()
-	m := reflect.MakeMap(t)
 
 	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
-		visited[ptr] = m
+		visited[ptr] = v
 	}
 
 	L.PushNil()
@@ -509,24 +516,25 @@ func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]
 		key := reflect.New(tk).Elem()
 		err := luaToGo(L, -2, key, visited)
 		if err != nil {
-			L.Pop(2) // TODO: test this!
-			return err
+			status = ErrTableConv
+			L.Pop(1)
+			continue
 		}
 		val := reflect.New(te).Elem()
 		err = luaToGo(L, -1, val, visited)
 		if err != nil {
-			L.Pop(2)
-			return err
+			status = ErrTableConv
+			L.Pop(1)
+			continue
 		}
 		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
-		m.SetMapIndex(key, val)
+		v.SetMapIndex(key, val)
 		L.Pop(1)
 	}
 
-	v.Set(m)
-	return nil
+	return
 }
 
 // Also for arrays. TODO: Create special function for arrays?
@@ -625,18 +633,28 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 
 // LuaToGo converts the Lua value at index 'idx' to the Go value.
 //
+// The Go value must be a non-nil pointer.
+//
 // Conversion to string and numbers is straightforward.
+//
+// Lua 'nil' is converted to the zero value of the specified Go value.
 //
 // The Go value can be a pointer with several levels of indirection.
 //
-// The Go value can be an interface, in which case the type is inferred.
+// The Go value can be an interface, in which case the type is inferred. When
+// converting a table to an interface, the Go value is a []interface{} slice if
+// all its elements are indexed consecutively from 1, or a
+// map[string]interface{} otherwise.
 //
-// When converting a table to an interface, the Go type is a map if the table
-// has non-numeric keys, or a slice otherwise.
+// Existing entries in maps and structs are kept.
 //
-// 'v' must be a non-nil pointer.
+// Nil maps and slices are automatically allocated.
+//
+// If the Lua value is a userdata, LuaToGo will unwrap it in the Go value.
+// If the Lua value is a userdata that is not a proxy and the Go value is an
+// interface, the Go value will be set to a LuaObject.
 func LuaToGo(L *lua.State, idx int, a interface{}) error {
-	// LuaToGo should not pop to be consistent with L.ToString(), etc.
+	// LuaToGo should not pop the Lua stack to be consistent with L.ToString(), etc.
 	// It is also easier in practice when we want to keep working with the value on stack.
 
 	v := reflect.ValueOf(a)
