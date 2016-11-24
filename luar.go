@@ -652,7 +652,10 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 //
 // Lua 'nil' is converted to the zero value of the specified Go value.
 //
-// The Go value can be a pointer with several levels of indirection.
+// If the Lua value is non-nil, pointers are dereferenced (multiple times if
+// required) and the pointed value is the one that is set. If 'nil', then the Go
+// pointer is set to 'nil'. To set a pointer's value to its zero value, use
+// 'luar.null'.
 //
 // The Go value can be an interface, in which case the type is inferred. When
 // converting a table to an interface, the Go value is a []interface{} slice if
@@ -680,9 +683,14 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 		return errors.New("nil pointer")
 	}
 
+	v = v.Elem()
+	// If the Lua value is 'nil' and the Go value is a pointer, nullify the pointer.
+	if v.Kind() == reflect.Ptr && L.IsNil(idx) {
+		v.Set(reflect.Zero(v.Type()))
+		return nil
+	}
 	// Derefence 'v' until a non-pointer.
 	// This initializes the values, which will be useless effort if the conversion fails.
-	v = v.Elem()
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
@@ -706,13 +714,11 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		v.Set(reflect.ValueOf(L.ToBoolean(idx)))
 	case lua.LUA_TNUMBER:
 		switch k := unsizedKind(v); k {
-		case reflect.Int64, reflect.Uint64:
+		case reflect.Int64, reflect.Uint64, reflect.Float64, reflect.Interface:
 			// We do not use ToInteger as it may truncate the value. Let Go truncate
 			// instead in Convert().
 			f := reflect.ValueOf(L.ToNumber(idx))
 			v.Set(f.Convert(v.Type()))
-		case reflect.Float64, reflect.Interface:
-			v.Set(reflect.ValueOf(L.ToNumber(idx)))
 		case reflect.Complex128:
 			v.SetComplex(complex(L.ToNumber(idx), 0))
 		default:
