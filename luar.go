@@ -601,7 +601,7 @@ func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintpt
 	return
 }
 
-func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) (status error) {
 	t := v.Type()
 	// TODO: Use on 'value' directly? Yes.
 	s := reflect.New(t).Elem()
@@ -638,8 +638,9 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 			val := reflect.New(f.Type()).Elem()
 			err := luaToGo(L, -1, val, visited)
 			if err != nil {
-				L.Pop(2) // TODO: Test this!
-				return err
+				status = ErrTableConv
+				L.Pop(1) // TODO: Test this!
+				continue
 			}
 			f.Set(val)
 		}
@@ -647,7 +648,7 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 	}
 
 	v.Set(s)
-	return nil
+	return
 }
 
 // LuaToGo converts the Lua value at index 'idx' to the Go value.
