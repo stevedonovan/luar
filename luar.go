@@ -753,6 +753,7 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 			v.Set(val)
 			return nil
 		}
+
 		switch kind {
 		case reflect.Array:
 			fallthrough
@@ -765,9 +766,10 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		case reflect.Interface:
 			n := int(L.ObjLen(idx))
 
-			if v.Elem().Kind() == reflect.Map {
+			switch v.Elem().Kind() {
+			case reflect.Map:
 				return copyTableToMap(L, idx, v.Elem(), visited)
-			} else if v.Elem().Kind() == reflect.Slice {
+			case reflect.Slice:
 				// Need to make/resize the slice here since interface values are not adressable.
 				v.Set(reflect.MakeSlice(v.Elem().Type(), n, n))
 				return copyTableToSlice(L, idx, v.Elem(), visited)
