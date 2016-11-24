@@ -672,24 +672,25 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
 		v.Set(reflect.ValueOf(L.ToBoolean(idx)))
-	case lua.LUA_TSTRING:
-		if kind != reflect.String && kind != reflect.Interface {
-			return ConvError{From: luaDesc(L, idx), To: v.Type()}
-		}
-		v.Set(reflect.ValueOf(L.ToString(idx)))
 	case lua.LUA_TNUMBER:
 		switch k := unsizedKind(v); k {
-		case reflect.Int64, reflect.Uint64, reflect.Float64:
-			f := reflect.ValueOf(L.ToNumber(idx)).Convert(v.Type())
-			v.Set(f)
-		case reflect.Interface:
-			// TODO: Merge with other numbers? Check if conversion does something.
+		case reflect.Int64, reflect.Uint64:
+			// We do not use ToInteger as it may truncate the value. Let Go truncate
+			// instead in Convert().
+			f := reflect.ValueOf(L.ToNumber(idx))
+			v.Set(f.Convert(v.Type()))
+		case reflect.Float64, reflect.Interface:
 			v.Set(reflect.ValueOf(L.ToNumber(idx)))
 		case reflect.Complex128:
 			v.SetComplex(complex(L.ToNumber(idx), 0))
 		default:
 			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
+	case lua.LUA_TSTRING:
+		if kind != reflect.String && kind != reflect.Interface {
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
+		}
+		v.Set(reflect.ValueOf(L.ToString(idx)))
 	case lua.LUA_TUSERDATA:
 		if isValueProxy(L, idx) {
 			val, typ := valueOfProxy(L, idx)
