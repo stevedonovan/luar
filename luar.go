@@ -744,7 +744,7 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 			v.Set(val.Convert(v.Type()))
 			return nil
 		} else if kind != reflect.Interface || v.Type() != reflect.TypeOf(LuaObject{}) {
-			return ConvError{From: luaDesc(L, idx), To: v}
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
 		// Wrap the userdata into a LuaObject.
 		v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
