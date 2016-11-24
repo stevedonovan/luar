@@ -18,7 +18,8 @@ type ConvError struct {
 
 // ErrTableConv arises when some table entries could not be converted.
 // The table conversion result is usable.
-// TODO: Work out an apt name.
+// TODO: Work out a more relevant name.
+// TODO: Should it be a type instead embedding the actual error?
 var ErrTableConv = errors.New("some table elements could not be converted")
 
 func (l ConvError) Error() string {
@@ -538,20 +539,28 @@ func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]
 }
 
 // Also for arrays. TODO: Create special function for arrays?
-func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) (status error) {
 	t := v.Type()
-	if v.Kind() == reflect.Interface {
-		t = tslice
-	}
-
 	n := int(L.ObjLen(idx))
 
-	var s reflect.Value
-	if t.Kind() == reflect.Array {
-		s = reflect.New(t)
-		s = s.Elem()
-	} else {
-		s = reflect.MakeSlice(t, n, n)
+	// Adjust the length of the array/slice.
+	if n > v.Len() {
+		if t.Kind() == reflect.Array {
+			n = v.Len()
+		} else {
+			// Slice
+			v.Set(reflect.MakeSlice(t, n, n))
+		}
+	} else if n < v.Len() {
+		if t.Kind() == reflect.Array {
+			// Nullify remaining elements.
+			for i := n; i < v.Len(); i++ {
+				v.Index(i).Set(reflect.Zero(t.Elem()))
+			}
+		} else {
+			// Slice
+			v.SetLen(n)
+		}
 	}
 
 	// Do not add empty slices to the list of visited elements.
@@ -559,7 +568,7 @@ func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintpt
 	// Arrays cannot be cyclic since the interface type will ask for slices.
 	if n > 0 && t.Kind() != reflect.Array {
 		ptr := L.ToPointer(idx)
-		visited[ptr] = s
+		visited[ptr] = v
 	}
 
 	te := t.Elem()
@@ -568,18 +577,18 @@ func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintpt
 		val := reflect.New(te).Elem()
 		err := luaToGo(L, -1, val, visited)
 		if err != nil {
+			status = ErrTableConv
 			L.Pop(1)
-			return err
+			continue
 		}
 		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
-		s.Index(i - 1).Set(val)
+		v.Index(i - 1).Set(val)
 		L.Pop(1)
 	}
 
-	v.Set(s)
-	return nil
+	return
 }
 
 func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
