@@ -644,6 +644,9 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 	if v.Kind() != reflect.Ptr {
 		return errors.New("not a pointer")
 	}
+	if v.IsNil() {
+		return errors.New("nil pointer")
+	}
 
 	// Derefence the pointers until 'v' is a non-pointer.
 	// This initializes the values, which will be useless effort if the conversion fails.
