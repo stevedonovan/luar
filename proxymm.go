@@ -30,6 +30,8 @@ func channel__index(L *lua.State) int {
 		f := func(L *lua.State) int {
 			val := reflect.New(t.Elem())
 			LuaToGo(L, 1, val.Interface())
+			// TODO: Error check? Same for append, newindex, etc.
+			// Solution: do nothing and send zero value. Other solution: return (bool, msg).
 			v.Send(val.Elem())
 			return 0
 		}
@@ -70,7 +72,12 @@ func interface__index(L *lua.State) int {
 func map__index(L *lua.State) int {
 	v, t := valueOfProxy(L, 1)
 	key := reflect.New(t.Key())
-	LuaToGo(L, 2, key.Interface()) // TODO: Error check? For all mm?
+	err := LuaToGo(L, 2, key.Interface())
+	if err != nil {
+		// No need to panic.
+		L.PushNil()
+		return 1
+	}
 	key = key.Elem()
 	val := v.MapIndex(key)
 	if val.IsValid() {
