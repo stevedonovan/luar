@@ -665,7 +665,7 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 // all its elements are indexed consecutively from 1, or a
 // map[string]interface{} otherwise.
 //
-// Existing entries in maps and structs are kept.
+// Existing entries in maps and structs are kept. Arrays and slices are reset.
 //
 // Nil maps and slices are automatically allocated.
 //
@@ -686,7 +686,7 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 		return errors.New("nil pointer")
 	}
 
-	// Derefence the pointers until 'v' is a non-pointer.
+	// Derefence 'v' until a non-pointer.
 	// This initializes the values, which will be useless effort if the conversion fails.
 	v = v.Elem()
 	for v.Kind() == reflect.Ptr {
