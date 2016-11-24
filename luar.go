@@ -492,12 +492,22 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
+func luaMapLen(L *lua.State, idx int) uint {
+	L.PushNil()
+	if idx < 0 {
+		idx--
+	}
+	len := uint(0)
+	for L.Next(idx) != 0 {
+		len++
+		L.Pop(1)
+	}
+	return len
+}
+
 func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) (status error) {
 	t := v.Type()
-	if v.Kind() == reflect.Interface {
-		t = tmap
-		v.Set(reflect.MakeMap(t))
-	} else if v.IsNil() {
+	if v.IsNil() {
 		v.Set(reflect.MakeMap(t))
 	}
 	te, tk := t.Elem(), t.Key()
@@ -761,14 +771,20 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		case reflect.Struct:
 			return copyTableToStruct(L, idx, v, visited)
 		case reflect.Interface:
-			// We have to make an executive decision here: tables with non-zero
-			// length are assumed to be slices!
-			// TODO: Bad! Instead, compare the count of element with the Lua length of the table.
-			if L.ObjLen(idx) > 0 {
+			if v.Elem().Kind() == reflect.Map {
+				return copyTableToMap(L, idx, v.Elem(), visited)
+			} else if v.Elem().Kind() == reflect.Slice {
+				// TODO: Test this.
 				return copyTableToSlice(L, idx, v, visited)
-			} else {
-				return copyTableToMap(L, idx, v, visited)
 			}
+
+			if luaMapLen(L, idx) != L.ObjLen(idx) {
+				v.Set(reflect.MakeMap(tmap))
+				return copyTableToMap(L, idx, v.Elem(), visited)
+			}
+			// TODO: test this.
+			v.Set(reflect.MakeSlice(tslice, 0, 0))
+			return copyTableToSlice(L, idx, v.Elem(), visited)
 		default:
 			return ConvError{From: luaDesc(L, idx), To: v}
 		}
