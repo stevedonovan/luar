@@ -677,7 +677,8 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 	// It is also easier in practice when we want to keep working with the value on stack.
 
 	v := reflect.ValueOf(a)
-	// TODO: Allow unreferenced map? json does not do it...
+	// TODO: Test interfaces with methods.
+	// TODO: Allow unreferenced map? encoding/json does not do it.
 	if v.Kind() != reflect.Ptr {
 		return errors.New("not a pointer")
 	}
