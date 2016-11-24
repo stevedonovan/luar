@@ -595,9 +595,17 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 }
 
 // LuaToGo converts the Lua value at index 'idx' to the Go value.
-// Handles numerical and string types in a straightforward way, and will convert
-// tables to either map or slice types.
-// Return an error if 'v' is not a non-nil pointer.
+//
+// Conversion to string and numbers is straightforward.
+//
+// The Go value can be a pointer with several levels of indirection.
+//
+// The Go value can be an interface, in which case the type is inferred.
+//
+// When converting a table to an interface, the Go type is a map if the table
+// has non-numeric keys, or a slice otherwise.
+//
+// 'v' must be a non-nil pointer.
 func LuaToGo(L *lua.State, idx int, a interface{}) error {
 	// LuaToGo should not pop to be consistent with L.ToString(), etc.
 	// It is also easier in practice when we want to keep working with the value on stack.
@@ -607,7 +615,17 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 	if v.Kind() != reflect.Ptr {
 		return errors.New("not a pointer")
 	}
+
+	// Derefence the pointers until 'v' is a non-pointer.
+	// This initializes the values, which will be useless effort if the conversion fails.
 	v = v.Elem()
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
+
 	return luaToGo(L, idx, v, map[uintptr]reflect.Value{})
 }
 
@@ -644,8 +662,14 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		if isValueProxy(L, idx) {
 			val, typ := valueOfProxy(L, idx)
 			if val.Interface() == Null {
+				// Special case for Null.
 				v.Set(reflect.Zero(v.Type()))
 				return nil
+			}
+
+			for !typ.ConvertibleTo(v.Type()) && val.Kind() == reflect.Ptr {
+				val = val.Elem()
+				typ = typ.Elem()
 			}
 			if !typ.ConvertibleTo(v.Type()) {
 				return LuaToGoError{Lua: typ.String(), Go: v}
