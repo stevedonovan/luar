@@ -68,6 +68,7 @@ func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
 		if err != nil {
 			return err
 		}
+		defer L.Pop(1)
 		return LuaToGo(L, -1, res.Interface())
 
 	case reflect.Slice:
