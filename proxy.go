@@ -162,7 +162,7 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 
 func mustUnwrapProxy(L *lua.State, idx int) interface{} {
 	if !isValueProxy(L, idx) {
-		RaiseError(L, fmt.Sprintf("arg #%d is not a Go object", idx))
+		RaiseError(L, "arg #%d is not a Go object", idx)
 	}
 	v, _ := valueOfProxy(L, idx)
 	return v.Interface()
@@ -253,7 +253,7 @@ func valueToNumber(L *lua.State, v reflect.Value) float64 {
 			return f
 		}
 	}
-	RaiseError(L, "cannot convert to number")
+	RaiseError(L, "cannot convert %#v to number", v)
 	return 0
 }
 
@@ -264,7 +264,6 @@ func valueToString(L *lua.State, v reflect.Value) string {
 	case reflect.String:
 		return v.String()
 	}
-
 	RaiseError(L, "cannot convert to string")
 	return ""
 }

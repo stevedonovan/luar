@@ -206,7 +206,7 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) {
 func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Value {
 	defer func() {
 		if x := recover(); x != nil {
-			RaiseError(L, fmt.Sprintf("error %s", x))
+			RaiseError(L, "error %s", x)
 		}
 	}()
 	resv := funv.Call(args)
@@ -817,11 +817,14 @@ func isNewType(t reflect.Type) bool {
 }
 
 // RaiseError raises a Lua error from Go code.
-func RaiseError(L *lua.State, msg string) {
+func RaiseError(L *lua.State, format string, args ...interface{}) {
+	// TODO: Rename to Fatalf?
+	// TODO: Don't use and always return errors? Test what happens in examples. Can we continue?
+	// TODO: Use golua's RaiseError?
 	L.Where(1)
 	pos := L.ToString(-1)
 	L.Pop(1)
-	panic(L.NewError(pos + " " + msg))
+	panic(L.NewError(pos + fmt.Sprintf(format, args...)))
 }
 
 // Register makes a number of Go values available in Lua code.
@@ -858,7 +861,7 @@ func Register(L *lua.State, table string, values Map) {
 
 func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
 	if !v.IsValid() {
-		RaiseError(L, fmt.Sprintf("no %s named `%s` for type %s", what, name, parent.Type()))
+		RaiseError(L, "no %s named `%s` for type %s", what, name, parent.Type())
 	}
 }
 
