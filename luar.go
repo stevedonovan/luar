@@ -144,63 +144,63 @@ func isNil(v reflect.Value) bool {
 	return nullables[kind] && v.IsNil()
 }
 
-func copyMapToTable(L *lua.State, vmap reflect.Value, visited visitor) {
-	n := vmap.Len()
+func copyMapToTable(L *lua.State, v reflect.Value, visited visitor) {
+	n := v.Len()
 	L.CreateTable(0, n)
-	visited.mark(vmap)
-	for _, key := range vmap.MapKeys() {
-		v := vmap.MapIndex(key)
+	visited.mark(v)
+	for _, key := range v.MapKeys() {
+		val := v.MapIndex(key)
 		goToLua(L, key, true, visited)
-		if isNil(v) {
-			v = nullv
+		if isNil(val) {
+			val = nullv
 		}
-		goToLua(L, v, false, visited)
+		goToLua(L, val, false, visited)
 		L.SetTable(-3)
 	}
 }
 
 // Also for arrays.
-func copySliceToTable(L *lua.State, vslice reflect.Value, visited visitor) {
-	ref := vslice
-	for vslice.Kind() == reflect.Ptr {
+func copySliceToTable(L *lua.State, v reflect.Value, visited visitor) {
+	vp := v
+	for v.Kind() == reflect.Ptr {
 		// For arrays.
-		vslice = vslice.Elem()
+		v = v.Elem()
 	}
 
-	n := vslice.Len()
+	n := v.Len()
 	L.CreateTable(n, 0)
-	if vslice.Kind() == reflect.Slice {
-		visited.mark(vslice)
-	} else if ref.Kind() == reflect.Ptr {
-		visited.mark(ref)
+	if v.Kind() == reflect.Slice {
+		visited.mark(v)
+	} else if vp.Kind() == reflect.Ptr {
+		visited.mark(vp)
 	}
 
 	for i := 0; i < n; i++ {
 		L.PushInteger(int64(i + 1))
-		v := vslice.Index(i)
-		if isNil(v) {
-			v = nullv
+		val := v.Index(i)
+		if isNil(val) {
+			val = nullv
 		}
-		goToLua(L, v, false, visited)
+		goToLua(L, val, false, visited)
 		L.SetTable(-3)
 	}
 }
 
-func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) {
+func copyStructToTable(L *lua.State, v reflect.Value, visited visitor) {
 	// If 'vstruct' is a pointer to struct, use the pointer to mark as visited.
-	ref := vstruct
-	for vstruct.Kind() == reflect.Ptr {
-		vstruct = vstruct.Elem()
+	vp := v
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
 	}
 
-	n := vstruct.NumField()
+	n := v.NumField()
 	L.CreateTable(n, 0)
-	if ref.Kind() == reflect.Ptr {
-		visited.mark(ref)
+	if vp.Kind() == reflect.Ptr {
+		visited.mark(vp)
 	}
 
 	for i := 0; i < n; i++ {
-		st := vstruct.Type()
+		st := v.Type()
 		field := st.Field(i)
 		key := field.Name
 		tag := field.Tag.Get("lua")
@@ -208,47 +208,46 @@ func copyStructToTable(L *lua.State, vstruct reflect.Value, visited visitor) {
 			key = tag
 		}
 		goToLua(L, key, false, visited)
-		v := vstruct.Field(i)
-		goToLua(L, v, false, visited)
+		val := v.Field(i)
+		goToLua(L, val, false, visited)
 		L.SetTable(-3)
 	}
 }
 
-func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Value {
+func callGoFunction(L *lua.State, v reflect.Value, args []reflect.Value) []reflect.Value {
 	defer func() {
 		if x := recover(); x != nil {
 			RaiseError(L, "error %s", x)
 		}
 	}()
-	resv := funv.Call(args)
-	return resv
+	results := v.Call(args)
+	return results
 }
 
-func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
-	switch f := fun.Interface().(type) {
+func goToLuaFunction(L *lua.State, v reflect.Value) lua.LuaGoFunction {
+	switch f := v.Interface().(type) {
 	case func(*lua.State) int:
 		return f
 	}
 
-	funT := fun.Type()
-	tArgs := make([]reflect.Type, funT.NumIn())
-	for i := range tArgs {
-		tArgs[i] = funT.In(i)
+	t := v.Type()
+	argsT := make([]reflect.Type, t.NumIn())
+	for i := range argsT {
+		argsT[i] = t.In(i)
 	}
 
 	return func(L *lua.State) int {
 		var lastT reflect.Type
-		origTArgs := tArgs
-		isVariadic := funT.IsVariadic()
+		isVariadic := t.IsVariadic()
 
 		if isVariadic {
-			n := len(tArgs)
-			lastT = tArgs[n-1].Elem()
-			tArgs = tArgs[0 : n-1]
+			n := len(argsT)
+			lastT = argsT[n-1].Elem()
+			argsT = argsT[:n-1]
 		}
 
-		args := make([]reflect.Value, len(tArgs))
-		for i, t := range tArgs {
+		args := make([]reflect.Value, len(argsT))
+		for i, t := range argsT {
 			val := reflect.New(t)
 			err := LuaToGo(L, i+1, val.Interface())
 			if err != nil {
@@ -259,7 +258,7 @@ func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 
 		if isVariadic {
 			n := L.GetTop()
-			for i := len(tArgs) + 1; i <= n; i++ {
+			for i := len(argsT) + 1; i <= n; i++ {
 				val := reflect.New(lastT)
 				err := LuaToGo(L, i, val.Interface())
 				if err != nil {
@@ -267,22 +266,22 @@ func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 				}
 				args = append(args, val.Elem())
 			}
-			tArgs = origTArgs
+			argsT = argsT[:len(argsT)+1]
 		}
-		resV := callGo(L, fun, args)
-		for _, val := range resV {
+		results := callGoFunction(L, v, args)
+		for _, val := range results {
 			if val.Kind() == reflect.Struct {
 				// If the function returns a struct (and not a pointer to a struct),
 				// calling GoToLua directly will convert it to a table, making the
 				// mathods inaccessible. We work around that issue by forcibly passing a
 				// pointer to a struct.
-				n := reflect.New(val.Type())
-				n.Elem().Set(val)
-				val = n
+				valp := reflect.New(val.Type())
+				valp.Elem().Set(val)
+				val = valp
 			}
 			GoToLuaProxy(L, val)
 		}
-		return len(resV)
+		return len(results)
 	}
 }
 
@@ -291,10 +290,10 @@ func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 // It unboxes interfaces.
 //
 // Pointers are followed recursively. Slices, structs and maps are copied over as tables.
-func GoToLua(L *lua.State, val interface{}) {
-	v := newVisitor(L)
-	goToLua(L, val, false, v)
-	v.close()
+func GoToLua(L *lua.State, a interface{}) {
+	visited := newVisitor(L)
+	goToLua(L, a, false, visited)
+	visited.close()
 }
 
 // GoToLuaProxy is like GoToLua but pushes a proxy on the Lua stack when it makes sense.
@@ -307,141 +306,141 @@ func GoToLua(L *lua.State, val interface{}) {
 // they will be copied as tables.
 //
 // Predeclared scalar types are never proxified as they have no methods.
-func GoToLuaProxy(L *lua.State, val interface{}) {
-	v := newVisitor(L)
-	goToLua(L, val, true, v)
-	v.close()
+func GoToLuaProxy(L *lua.State, a interface{}) {
+	visited := newVisitor(L)
+	goToLua(L, a, true, visited)
+	visited.close()
 }
 
 // TODO: Check if we really need multiple pointer levels since pointer methods
 // can be called on non-pointers.
-func goToLua(L *lua.State, v interface{}, proxify bool, visited visitor) {
-	var val reflect.Value
-	val, ok := v.(reflect.Value)
+func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
+	var v reflect.Value
+	v, ok := a.(reflect.Value)
 	if !ok {
-		val = reflect.ValueOf(v)
+		v = reflect.ValueOf(a)
 	}
-	if !val.IsValid() {
+	if !v.IsValid() {
 		L.PushNil()
 		return
 	}
 
-	// Unbox interface.
-	if val.Kind() == reflect.Interface && !val.IsNil() {
-		val = reflect.ValueOf(val.Interface())
+	if v.Kind() == reflect.Interface && !v.IsNil() {
+		// Unbox interface.
+		v = reflect.ValueOf(v.Interface())
 	}
 
 	// Follow pointers if not proxifying. We save the original pointer Value in case we proxify.
-	ptrVal := val
-	for val.Kind() == reflect.Ptr {
-		val = val.Elem()
+	vp := v
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
 	}
 
-	if !val.IsValid() {
+	if !v.IsValid() {
 		L.PushNil()
 		return
 	}
 
 	// As a special case, we always proxify Null, the empty element for slices and maps.
-	if val.CanInterface() && val.Interface() == Null {
-		makeValueProxy(L, val, cInterfaceMeta)
+	if v.CanInterface() && v.Interface() == Null {
+		makeValueProxy(L, v, cInterfaceMeta)
 		return
 	}
 
-	switch val.Kind() {
+	switch v.Kind() {
 	case reflect.Float64, reflect.Float32:
-		if proxify && isNewType(val.Type()) {
-			makeValueProxy(L, ptrVal, cNumberMeta)
+		if proxify && isNewType(v.Type()) {
+			makeValueProxy(L, vp, cNumberMeta)
 		} else {
-			L.PushNumber(val.Float())
+			L.PushNumber(v.Float())
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if proxify && isNewType(val.Type()) {
-			makeValueProxy(L, ptrVal, cNumberMeta)
+		if proxify && isNewType(v.Type()) {
+			makeValueProxy(L, vp, cNumberMeta)
 		} else {
-			L.PushNumber(float64(val.Int()))
+			L.PushNumber(float64(v.Int()))
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if proxify && isNewType(val.Type()) {
-			makeValueProxy(L, ptrVal, cNumberMeta)
+		if proxify && isNewType(v.Type()) {
+			makeValueProxy(L, vp, cNumberMeta)
 		} else {
-			L.PushNumber(float64(val.Uint()))
+			L.PushNumber(float64(v.Uint()))
 		}
 	case reflect.String:
-		if proxify && isNewType(val.Type()) {
-			makeValueProxy(L, ptrVal, cStringMeta)
+		if proxify && isNewType(v.Type()) {
+			makeValueProxy(L, vp, cStringMeta)
 		} else {
-			L.PushString(val.String())
+			L.PushString(v.String())
 		}
 	case reflect.Bool:
-		if proxify && isNewType(val.Type()) {
-			makeValueProxy(L, ptrVal, cInterfaceMeta)
+		if proxify && isNewType(v.Type()) {
+			makeValueProxy(L, vp, cInterfaceMeta)
 		} else {
-			L.PushBoolean(val.Bool())
+			L.PushBoolean(v.Bool())
 		}
 	case reflect.Complex128, reflect.Complex64:
-		makeValueProxy(L, ptrVal, cComplexMeta)
+		makeValueProxy(L, vp, cComplexMeta)
 	case reflect.Array:
 		// It needs be a pointer to be a proxy, otherwise values won't be settable.
-		if proxify && ptrVal.Kind() == reflect.Ptr {
-			makeValueProxy(L, ptrVal, cSliceMeta)
+		if proxify && vp.Kind() == reflect.Ptr {
+			makeValueProxy(L, vp, cSliceMeta)
 		} else {
 			// See the case of struct.
-			if ptrVal.Kind() == reflect.Ptr && visited.push(ptrVal) {
+			if vp.Kind() == reflect.Ptr && visited.push(vp) {
 				return
 			}
-			copySliceToTable(L, ptrVal, visited)
+			copySliceToTable(L, vp, visited)
 		}
 	case reflect.Slice:
 		if proxify {
-			makeValueProxy(L, ptrVal, cSliceMeta)
+			makeValueProxy(L, vp, cSliceMeta)
 		} else {
-			if visited.push(val) {
+			if visited.push(v) {
 				return
 			}
-			copySliceToTable(L, val, visited)
+			copySliceToTable(L, v, visited)
 		}
 	case reflect.Map:
 		if proxify {
-			makeValueProxy(L, ptrVal, cMapMeta)
+			makeValueProxy(L, vp, cMapMeta)
 		} else {
-			if visited.push(val) {
+			if visited.push(v) {
 				return
 			}
-			copyMapToTable(L, val, visited)
+			copyMapToTable(L, v, visited)
 		}
 	case reflect.Struct:
-		if proxify && ptrVal.Kind() == reflect.Ptr {
-			if ptrVal.CanInterface() {
-				switch v := ptrVal.Interface().(type) {
+		if proxify && vp.Kind() == reflect.Ptr {
+			if vp.CanInterface() {
+				switch v := vp.Interface().(type) {
 				case error:
 					L.PushString(v.Error())
 				case *LuaObject:
 					v.Push()
 				default:
-					makeValueProxy(L, ptrVal, cStructMeta)
+					makeValueProxy(L, vp, cStructMeta)
 				}
 			} else {
-				makeValueProxy(L, ptrVal, cStructMeta)
+				makeValueProxy(L, vp, cStructMeta)
 			}
 		} else {
-			// Use ptrVal instead of val to detect cycles from the very first element, if a pointer.
-			if ptrVal.Kind() == reflect.Ptr && visited.push(ptrVal) {
+			// Use vp instead of v to detect cycles from the very first element, if a pointer.
+			if vp.Kind() == reflect.Ptr && visited.push(vp) {
 				return
 			}
-			copyStructToTable(L, ptrVal, visited)
+			copyStructToTable(L, vp, visited)
 		}
 	case reflect.Chan:
-		makeValueProxy(L, ptrVal, cChannelMeta)
+		makeValueProxy(L, vp, cChannelMeta)
 	case reflect.Func:
-		L.PushGoFunction(goLuaFunc(L, val))
+		L.PushGoFunction(goToLuaFunction(L, v))
 	default:
-		if v, ok := val.Interface().(error); ok {
-			L.PushString(v.Error())
-		} else if val.IsNil() {
+		if val, ok := v.Interface().(error); ok {
+			L.PushString(val.Error())
+		} else if v.IsNil() {
 			L.PushNil()
 		} else {
-			makeValueProxy(L, ptrVal, cInterfaceMeta)
+			makeValueProxy(L, vp, cInterfaceMeta)
 		}
 	}
 }
@@ -458,9 +457,9 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
-func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
-	t := value.Type()
-	if value.Kind() == reflect.Interface {
+func copyTableToMap(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+	t := v.Type()
+	if v.Kind() == reflect.Interface {
 		t = tmap
 	}
 	te, tk := t.Elem(), t.Key()
@@ -497,26 +496,25 @@ func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uint
 		L.Pop(1)
 	}
 
-	value.Set(m)
+	v.Set(m)
 	return nil
 }
 
 // Also for arrays. TODO: Create special function for arrays?
-func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
-	t := value.Type()
-	if value.Kind() == reflect.Interface {
+func copyTableToSlice(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+	t := v.Type()
+	if v.Kind() == reflect.Interface {
 		t = tslice
 	}
 
 	n := int(L.ObjLen(idx))
 
-	// TODO: Rename 'slice'. Rename 'value', 'vstruct', etc.
-	var slice reflect.Value
+	var s reflect.Value
 	if t.Kind() == reflect.Array {
-		slice = reflect.New(t)
-		slice = slice.Elem()
+		s = reflect.New(t)
+		s = s.Elem()
 	} else {
-		slice = reflect.MakeSlice(t, n, n)
+		s = reflect.MakeSlice(t, n, n)
 	}
 
 	// Do not add empty slices to the list of visited elements.
@@ -524,7 +522,7 @@ func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[ui
 	// Arrays cannot be cyclic since the interface type will ask for slices.
 	if n > 0 && t.Kind() != reflect.Array {
 		ptr := L.ToPointer(idx)
-		visited[ptr] = slice
+		visited[ptr] = s
 	}
 
 	te := t.Elem()
@@ -539,31 +537,31 @@ func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[ui
 		if val.Interface() == Null {
 			val = reflect.Zero(te)
 		}
-		slice.Index(i - 1).Set(val)
+		s.Index(i - 1).Set(val)
 		L.Pop(1)
 	}
 
-	value.Set(slice)
+	v.Set(s)
 	return nil
 }
 
-func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
-	t := value.Type()
+func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+	t := v.Type()
 	// TODO: Use on 'value' directly? Yes.
-	ref := reflect.New(t).Elem()
+	s := reflect.New(t).Elem()
 
 	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
 		// TODO: If we don't handle pointers, then no need for visited.
-		visited[ptr] = ref.Addr()
+		visited[ptr] = s.Addr()
 	}
 
 	// Associate Lua keys with Go fields: tags have priority over matching field
 	// name.
 	fields := map[string]string{}
-	st := ref.Type()
-	for i := 0; i < ref.NumField(); i++ {
+	st := s.Type()
+	for i := 0; i < s.NumField(); i++ {
 		field := st.Field(i)
 		tag := field.Tag.Get("lua")
 		if tag != "" {
@@ -579,7 +577,7 @@ func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[u
 	}
 	for L.Next(idx) != 0 {
 		key := L.ToString(-2)
-		f := ref.FieldByName(fields[key])
+		f := s.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
 			val := reflect.New(f.Type()).Elem()
 			err := luaToGo(L, -1, val, visited)
@@ -592,7 +590,7 @@ func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[u
 		L.Pop(1)
 	}
 
-	value.Set(ref)
+	v.Set(s)
 	return nil
 }
 
@@ -600,98 +598,96 @@ func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[u
 // Handles numerical and string types in a straightforward way, and will convert
 // tables to either map or slice types.
 // Return an error if 'v' is not a non-nil pointer.
-func LuaToGo(L *lua.State, idx int, v interface{}) error {
+func LuaToGo(L *lua.State, idx int, a interface{}) error {
 	// TODO: For now, unwrapping proxies require the same type. If we keep that behaviour, document it.
-	// TODO: Rename 'value' -> 'v', 'v' -> 'arg'
-	value := reflect.ValueOf(v)
+	v := reflect.ValueOf(a)
 	// TODO: Allow unreferenced map? json does not do it...
-	if value.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Ptr {
 		return errors.New("not a pointer")
 	}
-	value = value.Elem()
-	return luaToGo(L, idx, value, map[uintptr]reflect.Value{})
+	v = v.Elem()
+	return luaToGo(L, idx, v, map[uintptr]reflect.Value{})
 }
 
-func luaToGo(L *lua.State, idx int, value reflect.Value, visited map[uintptr]reflect.Value) error {
-	kind := value.Kind()
+func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+	kind := v.Kind()
 
 	switch L.Type(idx) {
 	case lua.LUA_TNIL:
-		value.Set(reflect.Zero(value.Type()))
+		v.Set(reflect.Zero(v.Type()))
 	case lua.LUA_TBOOLEAN:
 		if kind != reflect.Bool && kind != reflect.Interface {
-			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
 		}
-		value.Set(reflect.ValueOf(L.ToBoolean(idx)))
+		v.Set(reflect.ValueOf(L.ToBoolean(idx)))
 	case lua.LUA_TSTRING:
 		if kind != reflect.String && kind != reflect.Interface {
-			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
 		}
-		value.Set(reflect.ValueOf(L.ToString(idx)))
+		v.Set(reflect.ValueOf(L.ToString(idx)))
 	case lua.LUA_TNUMBER:
-		switch k := unsizedKind(value); k {
+		switch k := unsizedKind(v); k {
 		case reflect.Int64, reflect.Uint64, reflect.Float64:
-			f := reflect.ValueOf(L.ToNumber(idx)).Convert(value.Type())
-			value.Set(f)
+			f := reflect.ValueOf(L.ToNumber(idx)).Convert(v.Type())
+			v.Set(f)
 		case reflect.Interface:
 			// TODO: Merge with other numbers? Check if conversion does something.
-			value.Set(reflect.ValueOf(L.ToNumber(idx)))
+			v.Set(reflect.ValueOf(L.ToNumber(idx)))
 		case reflect.Complex128:
-			value.SetComplex(complex(L.ToNumber(idx), 0))
+			v.SetComplex(complex(L.ToNumber(idx), 0))
 		default:
-			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
 		}
 	case lua.LUA_TUSERDATA:
 		if isValueProxy(L, idx) {
-			v, t := valueOfProxy(L, idx)
-			if v.Interface() == Null {
-				// Special case for Null.
-				value.Set(reflect.Zero(value.Type()))
+			val, typ := valueOfProxy(L, idx)
+			if val.Interface() == Null {
+				v.Set(reflect.Zero(v.Type()))
 				return nil
 			}
-			if !t.ConvertibleTo(value.Type()) {
-				return LuaToGoError{Lua: t.String(), Go: value}
+			if !typ.ConvertibleTo(v.Type()) {
+				return LuaToGoError{Lua: typ.String(), Go: v}
 			}
 			// We automatically convert between types. This behaviour is consistent
 			// with LuaToGo conversions elsewhere.
-			value.Set(v.Convert(value.Type()))
+			v.Set(val.Convert(v.Type()))
 			return nil
-		} else if kind != reflect.Interface || value.Type() != reflect.TypeOf(LuaObject{}) {
-			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+		} else if kind != reflect.Interface || v.Type() != reflect.TypeOf(LuaObject{}) {
+			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
 		}
 		// Wrap the userdata into a LuaObject.
-		value.Set(reflect.ValueOf(NewLuaObject(L, idx)))
+		v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
 	case lua.LUA_TTABLE:
 		// TODO: Check what happens if visited is not of the right type.
 		// TODO: Check cyclic arrays / structs.
 		ptr := L.ToPointer(idx)
 		if val, ok := visited[ptr]; ok {
-			value.Set(val)
+			v.Set(val)
 			return nil
 		}
 		switch kind {
 		case reflect.Array:
 			fallthrough
 		case reflect.Slice:
-			return copyTableToSlice(L, idx, value, visited)
+			return copyTableToSlice(L, idx, v, visited)
 		case reflect.Map:
-			return copyTableToMap(L, idx, value, visited)
+			return copyTableToMap(L, idx, v, visited)
 		case reflect.Struct:
-			return copyTableToStruct(L, idx, value, visited)
+			return copyTableToStruct(L, idx, v, visited)
 		case reflect.Interface:
 			// We have to make an executive decision here: tables with non-zero
 			// length are assumed to be slices!
 			// TODO: Bad! Instead, compare the count of element with the Lua length of the table.
 			if L.ObjLen(idx) > 0 {
-				return copyTableToSlice(L, idx, value, visited)
+				return copyTableToSlice(L, idx, v, visited)
 			} else {
-				return copyTableToMap(L, idx, value, visited)
+				return copyTableToMap(L, idx, v, visited)
 			}
 		default:
-			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
 		}
 	default:
-		return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+		return LuaToGoError{Lua: L.LTypename(idx), Go: v}
 	}
 
 	return nil
@@ -773,6 +769,6 @@ func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name strin
 }
 
 // Closest we'll get to a typeof operator.
-func typeof(v interface{}) reflect.Type {
-	return reflect.TypeOf(v).Elem()
+func typeof(a interface{}) reflect.Type {
+	return reflect.TypeOf(a).Elem()
 }

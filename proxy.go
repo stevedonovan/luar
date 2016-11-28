@@ -12,8 +12,8 @@ import (
 // Lua proxy objects for Go slices, maps and structs
 // TODO: Replace by interface{}?
 type valueProxy struct {
-	value reflect.Value
-	t     reflect.Type
+	v reflect.Value
+	t reflect.Type
 }
 
 const (
@@ -67,16 +67,16 @@ func isValueProxy(L *lua.State, idx int) bool {
 }
 
 func luaToGoValue(L *lua.State, idx int) (reflect.Value, reflect.Type) {
-	var v interface{}
+	var a interface{}
 	// TODO: Keep the RaiseError or not? Since it is called in proxymm, yes.
-	err := LuaToGo(L, idx, &v)
+	err := LuaToGo(L, idx, &a)
 	if err != nil {
 		RaiseError(L, "%v", err)
 	}
-	return reflect.ValueOf(v), reflect.TypeOf(v)
+	return reflect.ValueOf(a), reflect.TypeOf(a)
 }
 
-func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
+func makeValueProxy(L *lua.State, v reflect.Value, proxyMT string) {
 	// The metatable needs be set up in the Lua state before the proxy is created,
 	// otherwise closing the state will fail on calling the garbage collector. Not
 	// really sure why this happens though...
@@ -156,10 +156,10 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 	L.Pop(1)
 	rawptr := L.NewUserdata(typeof((*valueProxy)(nil)).Size())
 	ptr := (*valueProxy)(rawptr)
-	ptr.value = val
-	ptr.t = val.Type()
+	ptr.v = v
+	ptr.t = v.Type()
 	proxymu.Lock()
-	proxyMap[ptr] = val
+	proxyMap[ptr] = v
 	proxymu.Unlock()
 	L.LGetMetaTable(proxyMT)
 	L.SetMetaTable(-2)
@@ -173,24 +173,24 @@ func mustUnwrapProxy(L *lua.State, idx int) interface{} {
 	return v.Interface()
 }
 
-func pushGoMethod(L *lua.State, name string, st reflect.Value) {
-	method := st.MethodByName(name)
+func pushGoMethod(L *lua.State, name string, v reflect.Value) {
+	method := v.MethodByName(name)
 	if !method.IsValid() {
-		T := st.Type()
+		t := v.Type()
 		// Could not resolve this method. Perhaps it's defined on the pointer?
-		if T.Kind() != reflect.Ptr {
-			if st.CanAddr() {
+		if t.Kind() != reflect.Ptr {
+			if v.CanAddr() {
 				// If we can get a pointer directly.
-				st = st.Addr()
+				v = v.Addr()
 			} else {
 				// Otherwise create and initialize one.
-				VP := reflect.New(T)
-				VP.Elem().Set(st)
-				st = VP
+				vp := reflect.New(t)
+				vp.Elem().Set(v)
+				v = vp
 			}
 		}
-		method = st.MethodByName(name)
-		assertValid(L, method, st, name, "method")
+		method = v.MethodByName(name)
+		assertValid(L, method, v, name, "method")
 	}
 	GoToLua(L, method)
 }
@@ -199,8 +199,8 @@ func pushGoMethod(L *lua.State, name string, st reflect.Value) {
 //
 // At least one operand must be a proxy for this function to be called. See the
 // main documentation for the conversion rules.
-func pushNumberValue(L *lua.State, i interface{}, t1, t2 reflect.Type) {
-	v := reflect.ValueOf(i)
+func pushNumberValue(L *lua.State, a interface{}, t1, t2 reflect.Type) {
+	v := reflect.ValueOf(a)
 	isComplex := unsizedKind(v) == reflect.Complex128
 	mt := cNumberMeta
 	if isComplex {
@@ -234,8 +234,8 @@ func unsizedKind(v reflect.Value) reflect.Kind {
 }
 
 func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
-	vp := (*valueProxy)(L.ToUserdata(idx))
-	return vp.value, vp.t
+	proxy := (*valueProxy)(L.ToUserdata(idx))
+	return proxy.v, proxy.t
 }
 
 func valueToComplex(L *lua.State, v reflect.Value) complex128 {

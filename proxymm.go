@@ -325,18 +325,18 @@ func number__unm(L *lua.State) int {
 // called. No need to check for type equality: Go's "==" operator will do it for
 // us.
 func proxy__eq(L *lua.State) int {
-	var v1 interface{}
-	LuaToGo(L, 1, &v1)
-	var v2 interface{}
-	LuaToGo(L, 2, &v2)
-	L.PushBoolean(v1 == v2)
+	var a1 interface{}
+	LuaToGo(L, 1, &a1)
+	var a2 interface{}
+	LuaToGo(L, 2, &a2)
+	L.PushBoolean(a1 == a2)
 	return 1
 }
 
 func proxy__gc(L *lua.State) int {
-	vp := (*valueProxy)(L.ToUserdata(1))
+	proxy := (*valueProxy)(L.ToUserdata(1))
 	proxymu.Lock()
-	delete(proxyMap, vp)
+	delete(proxyMap, proxy)
 	proxymu.Unlock()
 	return 0
 }
