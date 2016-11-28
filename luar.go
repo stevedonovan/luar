@@ -10,13 +10,42 @@ import (
 	"github.com/aarzilli/golua/lua"
 )
 
-type LuaToGoError struct {
-	Lua string
-	Go  reflect.Value
+// ConvError records a conversion error from value 'From' to value 'To'.
+type ConvError struct {
+	From interface{}
+	To   interface{}
 }
 
-func (l LuaToGoError) Error() string {
-	return fmt.Sprintf("cannot convert %v to %v", l.Lua, l.Go.Type())
+func (l ConvError) Error() string {
+	return fmt.Sprintf("cannot convert %v to %v", l.From, l.To)
+}
+
+// Lua 5.1 'lua_tostring' function only supports string and numbers. Extend it for internal purposes.
+// From the Lua 5.3 source code.
+func luaToString(L *lua.State, idx int) string {
+	switch L.Type(idx) {
+	case lua.LUA_TNUMBER:
+		L.PushValue(idx)
+		defer L.Pop(1)
+		return L.ToString(-1)
+	case lua.LUA_TSTRING:
+		return L.ToString(-1)
+	case lua.LUA_TBOOLEAN:
+		b := L.ToBoolean(idx)
+		if b {
+			return "true"
+		}
+		return "false"
+	case lua.LUA_TNIL:
+		return "nil"
+	default:
+		return fmt.Sprintf("%s: %p", L.LTypename(idx), L.ToPointer(idx))
+	}
+	return ""
+}
+
+func luaDesc(L *lua.State, idx int) string {
+	return fmt.Sprintf("Lua value '%v' (%v)", luaToString(L, idx), L.LTypename(idx))
 }
 
 // NullT is the type of Null.
@@ -637,12 +666,12 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		v.Set(reflect.Zero(v.Type()))
 	case lua.LUA_TBOOLEAN:
 		if kind != reflect.Bool && kind != reflect.Interface {
-			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
 		v.Set(reflect.ValueOf(L.ToBoolean(idx)))
 	case lua.LUA_TSTRING:
 		if kind != reflect.String && kind != reflect.Interface {
-			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
 		v.Set(reflect.ValueOf(L.ToString(idx)))
 	case lua.LUA_TNUMBER:
@@ -656,7 +685,7 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		case reflect.Complex128:
 			v.SetComplex(complex(L.ToNumber(idx), 0))
 		default:
-			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
 	case lua.LUA_TUSERDATA:
 		if isValueProxy(L, idx) {
@@ -672,14 +701,14 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 				typ = typ.Elem()
 			}
 			if !typ.ConvertibleTo(v.Type()) {
-				return LuaToGoError{Lua: typ.String(), Go: v}
+				return ConvError{From: fmt.Sprintf("proxy (%v)", typ), To: v.Type()}
 			}
 			// We automatically convert between types. This behaviour is consistent
 			// with LuaToGo conversions elsewhere.
 			v.Set(val.Convert(v.Type()))
 			return nil
 		} else if kind != reflect.Interface || v.Type() != reflect.TypeOf(LuaObject{}) {
-			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
+			return ConvError{From: luaDesc(L, idx), To: v}
 		}
 		// Wrap the userdata into a LuaObject.
 		v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
@@ -710,10 +739,10 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 				return copyTableToMap(L, idx, v, visited)
 			}
 		default:
-			return LuaToGoError{Lua: L.LTypename(idx), Go: v}
+			return ConvError{From: luaDesc(L, idx), To: v}
 		}
 	default:
-		return LuaToGoError{Lua: L.LTypename(idx), Go: v}
+		return ConvError{From: luaDesc(L, idx), To: v}
 	}
 
 	return nil
