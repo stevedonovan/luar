@@ -3,16 +3,27 @@
 package luar
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
 	"github.com/aarzilli/golua/lua"
 )
 
-// NullT is the type of 'luar.null'.
+type LuaToGoError struct {
+	Lua string
+	Go  reflect.Value
+}
+
+func (l LuaToGoError) Error() string {
+	return fmt.Sprintf("cannot convert %v to %v", l.Lua, l.Go.Type())
+}
+
+// NullT is the type of Null.
+// Having a dedicated type allows us to make the distinction between zero values and Null.
 type NullT int
 
-// Map is an alias for passing maps of strings to values to luar.
+// Map is an alias for map of strings.
 type Map map[string]interface{}
 
 var (
@@ -216,6 +227,7 @@ func callGo(L *lua.State, funv reflect.Value, args []reflect.Value) []reflect.Va
 // Elegant little 'cheat' suggested by Kyle Lemons, avoiding the 'Call using
 // zero Value argument' problem.
 // See http://play.golang.org/p/TZyOLzu2y-.
+// TODO: Delete as it is not needed anymore.
 func valueOfNil(ival interface{}) reflect.Value {
 	if ival == nil {
 		return reflect.ValueOf(&ival).Elem()
@@ -248,15 +260,23 @@ func goLuaFunc(L *lua.State, fun reflect.Value) lua.LuaGoFunction {
 
 		args := make([]reflect.Value, len(tArgs))
 		for i, t := range tArgs {
-			val := LuaToGo(L, t, i+1)
-			args[i] = valueOfNil(val)
+			val := reflect.New(t)
+			err := LuaToGo(L, i+1, val.Interface())
+			if err != nil {
+				RaiseError(L, "cannot convert go function arguments: %v", err)
+			}
+			args[i] = val.Elem()
 		}
 
 		if isVariadic {
 			n := L.GetTop()
 			for i := len(tArgs) + 1; i <= n; i++ {
-				iVal := LuaToGo(L, lastT, i)
-				args = append(args, valueOfNil(iVal))
+				val := reflect.New(lastT)
+				err := LuaToGo(L, i, val.Interface())
+				if err != nil {
+					RaiseError(L, "cannot convert go function arguments: %v", err)
+				}
+				args = append(args, val.Elem())
 			}
 			tArgs = origTArgs
 		}
@@ -449,8 +469,9 @@ func luaIsEmpty(L *lua.State, idx int) bool {
 	return true
 }
 
-func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
-	if t == nil {
+func copyTableToMap(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+	t := value.Type()
+	if value.Kind() == reflect.Interface {
 		t = tmap
 	}
 	te, tk := t.Elem(), t.Key()
@@ -468,31 +489,32 @@ func copyTableToMap(L *lua.State, t reflect.Type, idx int, visited map[uintptr]i
 	}
 	for L.Next(idx) != 0 {
 		// key at -2, value at -1
-		key := reflect.ValueOf(luaToGo(L, tk, -2, visited))
-		val := reflect.ValueOf(luaToGo(L, te, -1, visited))
+		key := reflect.New(tk).Elem()
+		luaToGo(L, -2, key, visited)
+		val := reflect.New(te).Elem()
+		luaToGo(L, -1, val, visited)
 		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
 		m.SetMapIndex(key, val)
 		L.Pop(1)
 	}
-	return m.Interface()
+
+	value.Set(m)
+	// TODO: Return nothing as it always succeeds? Make sure of that. Compare to other copy* funcs.
+	return nil
 }
 
 // Also for arrays.
-func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
-	if t == nil {
+func copyTableToSlice(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+	t := value.Type()
+	if value.Kind() == reflect.Interface {
 		t = tslice
-	}
-
-	ref := t
-	// There is probably no point at accepting more than one level of dreference.
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
 	}
 
 	n := int(L.ObjLen(idx))
 
+	// TODO: Rename 'slice'. Rename 'value', 'vstruct', etc.
 	var slice reflect.Value
 	if t.Kind() == reflect.Array {
 		slice = reflect.New(t)
@@ -503,19 +525,17 @@ func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr
 
 	// Do not add empty slices to the list of visited elements.
 	// The empty Lua table is a single instance object and gets re-used across maps, slices and others.
-	if n > 0 {
+	// Arrays cannot be cyclic since the interface type will ask for slices.
+	if n > 0 && t.Kind() != reflect.Array {
 		ptr := L.ToPointer(idx)
-		if ref.Kind() == reflect.Ptr {
-			visited[ptr] = slice.Addr().Interface()
-		} else {
-			visited[ptr] = slice.Interface()
-		}
+		visited[ptr] = slice.Interface()
 	}
 
 	te := t.Elem()
 	for i := 1; i <= n; i++ {
 		L.RawGeti(idx, i)
-		val := reflect.ValueOf(luaToGo(L, te, -1, visited))
+		val := reflect.New(te).Elem()
+		luaToGo(L, -1, val, visited)
 		if val.Interface() == nullv.Interface() {
 			val = reflect.Zero(te)
 		}
@@ -523,31 +543,20 @@ func copyTableToSlice(L *lua.State, t reflect.Type, idx int, visited map[uintptr
 		L.Pop(1)
 	}
 
-	if ref.Kind() == reflect.Ptr {
-		return slice.Addr().Interface()
-	}
-	return slice.Interface()
+	value.Set(slice)
+	return nil
 }
 
-func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
-	if t == nil {
-		RaiseError(L, "type argument must be non-nill")
-	}
-	wasPtr := t.Kind() == reflect.Ptr
-	if wasPtr {
-		t = t.Elem()
-	}
-	s := reflect.New(t) // T -> *T
-	ref := s.Elem()
+func copyTableToStruct(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+	t := value.Type()
+	// TODO: Use on 'value' directly? Yes.
+	ref := reflect.New(t).Elem()
 
 	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
-		if wasPtr {
-			visited[ptr] = s.Interface()
-		} else {
-			visited[ptr] = s.Elem().Interface()
-		}
+		// TODO: If we don't handle pointers, then no need for visited.
+		visited[ptr] = ref.Addr().Interface()
 	}
 
 	// Associate Lua keys with Go fields: tags have priority over matching field
@@ -572,222 +581,117 @@ func copyTableToStruct(L *lua.State, t reflect.Type, idx int, visited map[uintpt
 		key := L.ToString(-2)
 		f := ref.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
-			val := reflect.ValueOf(luaToGo(L, f.Type(), -1, visited))
+			val := reflect.New(f.Type()).Elem()
+			luaToGo(L, -1, val, visited)
 			f.Set(val)
 		}
 		L.Pop(1)
 	}
-	if wasPtr {
-		return s.Interface()
-	}
-	return s.Elem().Interface()
+
+	value.Set(ref)
+	return nil
 }
 
-// LuaToGo converts the Lua value at index 'idx' to the Go value of desired type 't'.
+// LuaToGo converts the Lua value at index 'idx' to the Go value.
 // Handles numerical and string types in a straightforward way, and will convert
 // tables to either map or slice types.
-// If 't' is nil or an interface, the type is inferred from the Lua value.
-func LuaToGo(L *lua.State, t reflect.Type, idx int) interface{} {
-	return luaToGo(L, t, idx, map[uintptr]interface{}{})
+// Return an error if 'v' is not a non-nil pointer.
+func LuaToGo(L *lua.State, idx int, v interface{}) error {
+	// TODO: For now, unwrapping proxies require the same type. If we keep that behaviour, document it.
+	value := reflect.ValueOf(v)
+	// TODO: Allow unreferenced map? json does not do it...
+	if value.Kind() != reflect.Ptr {
+		return errors.New("not a pointer")
+	}
+	value = value.Elem()
+	return luaToGo(L, idx, value, map[uintptr]interface{}{})
 }
 
-func luaToGo(L *lua.State, t reflect.Type, idx int, visited map[uintptr]interface{}) interface{} {
-	var value interface{}
-
-	var kind reflect.Kind
-	if t != nil {
-		if t.Kind() == reflect.Ptr {
-			kind = t.Elem().Kind()
-		} else if t.Kind() == reflect.Interface {
-			// Let the Lua type drive the conversion.
-			t = nil
-		} else {
-			kind = t.Kind()
-		}
-	}
+func luaToGo(L *lua.State, idx int, value reflect.Value, visited map[uintptr]interface{}) error {
+	kind := value.Kind()
 
 	switch L.Type(idx) {
 	case lua.LUA_TNIL:
-		if t == nil {
+		value.Set(reflect.Zero(value.Type()))
+	case lua.LUA_TBOOLEAN:
+		if kind != reflect.Bool && kind != reflect.Interface {
+			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+		}
+		value.Set(reflect.ValueOf(L.ToBoolean(idx)))
+	case lua.LUA_TSTRING:
+		if kind != reflect.String && kind != reflect.Interface {
+			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+		}
+		value.Set(reflect.ValueOf(L.ToString(idx)))
+	case lua.LUA_TNUMBER:
+		switch k := unsizedKind(value); k {
+		case reflect.Int64, reflect.Uint64, reflect.Float64:
+			f := reflect.ValueOf(L.ToNumber(idx)).Convert(value.Type())
+			value.Set(f)
+		case reflect.Interface:
+			// TODO: Merge with other numbers? Check if conversion does something.
+			value.Set(reflect.ValueOf(L.ToNumber(idx)))
+		case reflect.Complex128:
+			value.SetComplex(complex(L.ToNumber(idx), 0))
+		default:
+			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+		}
+	case lua.LUA_TUSERDATA:
+		if isValueProxy(L, idx) {
+			v, t := valueOfProxy(L, idx)
+			if v.Interface() == Null {
+				// Special case for Null.
+				value.Set(reflect.Zero(value.Type()))
+				return nil
+			}
+			if !t.ConvertibleTo(value.Type()) {
+				return LuaToGoError{Lua: t.String(), Go: value}
+			}
+			// We automatically convert between types. This behaviour is consistent
+			// with LuaToGo conversions elsewhere.
+			value.Set(v.Convert(value.Type()))
+			return nil
+		} else if kind != reflect.Interface || value.Type() != reflect.TypeOf(LuaObject{}) {
+			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
+		}
+		// Wrap the userdata into a LuaObject.
+		value.Set(reflect.ValueOf(NewLuaObject(L, idx)))
+	case lua.LUA_TTABLE:
+		// TODO: Check what happens if visited is not of the right type.
+		// TODO: Check cyclic arrays / structs.
+		// TODO: visited should hold reflect.Values.
+		ptr := L.ToPointer(idx)
+		if val, ok := visited[ptr]; ok {
+			v := reflect.ValueOf(val)
+			value.Set(v)
 			return nil
 		}
 		switch kind {
-		default:
-			value = reflect.Zero(t).Interface()
-		}
-	case lua.LUA_TBOOLEAN:
-		if t == nil {
-			kind = reflect.Bool
-		}
-		switch kind {
-		case reflect.Bool:
-			ptr := new(bool)
-			*ptr = L.ToBoolean(idx)
-			value = *ptr
-		default:
-			value = reflect.Zero(t).Interface()
-		}
-	case lua.LUA_TSTRING:
-		if t == nil {
-			kind = reflect.String
-		}
-		switch kind {
-		case reflect.String:
-			tos := L.ToString(idx)
-			ptr := new(string)
-			*ptr = tos
-			value = *ptr
-		default:
-			value = reflect.Zero(t).Interface()
-		}
-	case lua.LUA_TNUMBER:
-		if t == nil {
-			// Infering the type here (e.g. int if round value) would break backward
-			// compatibility and drift away from Lua's design: the numeric type is
-			// specified at compile time.
-			kind = reflect.Float64
-		}
-		switch kind {
-		case reflect.Float64:
-			ptr := new(float64)
-			*ptr = L.ToNumber(idx)
-			value = *ptr
-		case reflect.Float32:
-			ptr := new(float32)
-			*ptr = float32(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Int:
-			ptr := new(int)
-			*ptr = int(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Int8:
-			ptr := new(int8)
-			*ptr = int8(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Int16:
-			ptr := new(int16)
-			*ptr = int16(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Int32:
-			ptr := new(int32)
-			*ptr = int32(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Int64:
-			ptr := new(int64)
-			*ptr = int64(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Uint:
-			ptr := new(uint)
-			*ptr = uint(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Uint8:
-			ptr := new(uint8)
-			*ptr = uint8(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Uint16:
-			ptr := new(uint16)
-			*ptr = uint16(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Uint32:
-			ptr := new(uint32)
-			*ptr = uint32(L.ToNumber(idx))
-			value = *ptr
-		case reflect.Uint64:
-			ptr := new(uint64)
-			*ptr = uint64(L.ToNumber(idx))
-			value = *ptr
-		default:
-			value = reflect.Zero(t).Interface()
-		}
-	case lua.LUA_TTABLE:
-		if t == nil {
-			kind = reflect.Interface
-		}
-		fallthrough
-	default:
-		istable := L.IsTable(idx)
-		// If we don't know the type and the Lua object is userdata,
-		// then it might be a proxy for a Go object. Otherwise wrap
-		// it up as a LuaObject.
-		if t == nil && !istable {
-			if isValueProxy(L, idx) {
-				v, _ := valueOfProxy(L, idx)
-				return v.Interface()
-			}
-			return NewLuaObject(L, idx)
-		}
-		switch kind {
 		case reflect.Array:
-			if istable {
-				ptr := L.ToPointer(idx)
-				if val, ok := visited[ptr]; ok {
-					return val
-				}
-				value = copyTableToSlice(L, t, idx, visited)
-			} else {
-				value = mustUnwrapProxy(L, idx)
-			}
+			fallthrough
 		case reflect.Slice:
-			// if we get a table, then copy its values to a new slice
-			if istable {
-				ptr := L.ToPointer(idx)
-				if val, ok := visited[ptr]; ok {
-					return val
-				}
-				value = copyTableToSlice(L, t, idx, visited)
-			} else {
-				value = mustUnwrapProxy(L, idx)
-			}
+			return copyTableToSlice(L, idx, value, visited)
 		case reflect.Map:
-			if istable {
-				ptr := L.ToPointer(idx)
-				if val, ok := visited[ptr]; ok {
-					return val
-				}
-				value = copyTableToMap(L, t, idx, visited)
-			} else {
-				value = mustUnwrapProxy(L, idx)
-			}
+			return copyTableToMap(L, idx, value, visited)
 		case reflect.Struct:
-			if istable {
-				ptr := L.ToPointer(idx)
-				if val, ok := visited[ptr]; ok {
-					return val
-				}
-				value = copyTableToStruct(L, t, idx, visited)
-			} else {
-				value = mustUnwrapProxy(L, idx)
-			}
+			return copyTableToStruct(L, idx, value, visited)
 		case reflect.Interface:
-			if istable {
-				ptr := L.ToPointer(idx)
-				if val, ok := visited[ptr]; ok {
-					return val
-				}
-				// We have to make an executive decision here: tables with non-zero
-				// length are assumed to be slices!
-				if L.ObjLen(idx) > 0 {
-					value = copyTableToSlice(L, nil, idx, visited)
-				} else {
-					value = copyTableToMap(L, nil, idx, visited)
-				}
-			} else if L.IsNumber(idx) {
-				value = L.ToNumber(idx)
-			} else if L.IsString(idx) {
-				value = L.ToString(idx)
-			} else if L.IsBoolean(idx) {
-				value = L.ToBoolean(idx)
-			} else if L.IsNil(idx) {
-				return nil
+			// We have to make an executive decision here: tables with non-zero
+			// length are assumed to be slices!
+			// TODO: Bad! Instead, compare the count of element with the Lua length of the table.
+			if L.ObjLen(idx) > 0 {
+				return copyTableToSlice(L, idx, value, visited)
 			} else {
-				value = mustUnwrapProxy(L, idx)
+				return copyTableToMap(L, idx, value, visited)
 			}
 		default:
-			value = mustUnwrapProxy(L, idx)
+			return LuaToGoError{Lua: L.LTypename(idx), Go: value}
 		}
+	default:
+		return LuaToGoError{Lua: L.LTypename(idx), Go: value}
 	}
 
-	return value
+	return nil
 }
 
 func isNewType(t reflect.Type) bool {

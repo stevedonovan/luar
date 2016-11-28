@@ -67,7 +67,12 @@ func isValueProxy(L *lua.State, idx int) bool {
 }
 
 func luaToGoValue(L *lua.State, idx int) (reflect.Value, reflect.Type) {
-	v := LuaToGo(L, nil, idx)
+	var v interface{}
+	// TODO: Keep the RaiseError or not? Since it is called in proxymm, yes.
+	err := LuaToGo(L, idx, &v)
+	if err != nil {
+		RaiseError(L, "%v", err)
+	}
 	return reflect.ValueOf(v), reflect.TypeOf(v)
 }
 
@@ -162,7 +167,7 @@ func makeValueProxy(L *lua.State, val reflect.Value, proxyMT string) {
 
 func mustUnwrapProxy(L *lua.State, idx int) interface{} {
 	if !isValueProxy(L, idx) {
-		RaiseError(L, "arg #%d is not a Go object", idx)
+		RaiseError(L, "arg #%d is not a proxy", idx)
 	}
 	v, _ := valueOfProxy(L, idx)
 	return v.Interface()

@@ -1,5 +1,7 @@
 package luar
 
+// TODO: Remove assertions.
+
 import (
 	"os"
 	"reflect"
@@ -145,8 +147,7 @@ b[1] = 170
 	{
 		var output [2]int
 		L.GetGlobal("a")
-		res := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = res.([2]int)
+		LuaToGo(L, -1, &output)
 		if output[0] != 17 || output[1] != 180 {
 			t.Error("table conversion produced unexpected values", output)
 		}
@@ -155,9 +156,8 @@ b[1] = 170
 	{
 		var output *[2]int
 		L.GetGlobal("a")
-		res := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = res.(*[2]int)
-		if output[0] != 17 || output[1] != 180 {
+		err := LuaToGo(L, -1, &output)
+		if err == nil {
 			t.Error("table conversion produced unexpected values", output)
 		}
 	}
@@ -165,8 +165,7 @@ b[1] = 170
 	{
 		var output *[2]int
 		L.GetGlobal("b")
-		res := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = res.(*[2]int)
+		LuaToGo(L, -1, &output)
 		if output[0] != 170 || output[1] != 18 {
 			t.Error("table conversion produced unexpected values", output)
 		}
@@ -517,7 +516,7 @@ Libs = {}
 function Libs.fun(s,i,t,m)
 	assert(s == 'hello')
 	assert(i == 42)
-    --// slices and maps passed as proxies
+	-- Slices and maps are passed as proxies.
 	assert(type(t) == 'userdata' and t[1] == 42)
 	assert(type(m) == 'userdata' and m.name == 'Joe')
 	return 'ok'
@@ -529,21 +528,27 @@ end`
 	}
 
 	fun := NewLuaObjectFromName(L, "Libs.fun")
-	got, _ := fun.Call("hello", 42, []int{42, 66, 104}, map[string]string{
+
+	var got interface{}
+	err = fun.Call(&got, "hello", 42, []int{42, 66, 104}, map[string]string{
 		"name": "Joe",
 	})
-	if got != "ok" {
+	if err != nil {
+		t.Error(err)
+	}
+	// TODO: Rework this test.
+	if got.(string) != "ok" {
 		t.Error("did not get correct slice of slices!")
 	}
 }
 
-func TestLuaCallfSlice(t *testing.T) {
+func TestLuaCallSliceArgs(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
 	const code = `
 function return_slices()
-    return {{'one'}, luar.null, {'three'}}
+    return {'1a', '1b'}, luar.null, {'3a'}
 end`
 
 	err := L.DoString(code)
@@ -552,10 +557,30 @@ end`
 	}
 
 	fun := NewLuaObjectFromName(L, "return_slices")
-	results, _ := fun.Callf(Types([][]string{}))
-	sstrs := results[0].([][]string)
-	if !(sstrs[0][0] == "one" && sstrs[1] == nil && sstrs[2][0] == "three") {
-		t.Error("did not get correct slice of slices!")
+
+	exWant := [][]string{
+		{"1a", "1b"},
+		nil,
+		{"3a"},
+		nil,
+	}
+	results := make([][]string, 4)
+	for i := 0; i < len(results); i++ {
+		got := results[:i]
+		want := exWant[:i]
+		err = fun.Call(got)
+		if err != nil {
+			t.Error(err)
+		}
+		if !reflect.DeepEqual(want, got) {
+			t.Errorf("want %q, got %q", want, got)
+		}
+	}
+
+	var empty [][]string
+	err = fun.Call(empty)
+	if err != nil {
+		t.Error(err)
 	}
 }
 
@@ -688,11 +713,10 @@ assert(((new_a(8) * new_a(5)) / new_a(4)) % new_a(7) == new_a(3))`},
 	}
 
 	L.GetGlobal("a")
-	aType := reflect.TypeOf(a)
-	al := LuaToGo(L, aType, -1)
-	alType := reflect.TypeOf(al)
+	var al A
+	LuaToGo(L, -1, &al)
 
-	if alType != aType {
+	if reflect.TypeOf(al) != reflect.TypeOf(a) {
 		t.Error("types were not converted properly")
 	}
 
@@ -806,8 +830,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		var output []interface{}
 		L.DoString(`t = {17}; t[2] = t`)
 		L.GetGlobal("t")
-		v := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = v.([]interface{})
+		LuaToGo(L, -1, &output)
 		output_1 := output[1].([]interface{})
 		if &output_1[0] != &output[0] {
 			t.Errorf("address of repeated element differs")
@@ -818,8 +841,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		var output []interface{}
 		L.DoString(`t = {17}; v = {t}; t[2] = v`)
 		L.GetGlobal("t")
-		v := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = v.([]interface{})
+		LuaToGo(L, -1, &output)
 		output_1 := output[1].([]interface{})
 		output_1_0 := output_1[0].([]interface{})
 		if &output_1_0[0] != &output[0] {
@@ -831,8 +853,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		var output []interface{}
 		L.DoString(`t = {17}; v = {t, t}; t[2] = v; t[3] = v; t[4] = t`)
 		L.GetGlobal("t")
-		v := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = v.([]interface{})
+		LuaToGo(L, -1, &output)
 		output_2 := output[2].([]interface{})
 		output_2_0 := output_2[0].([]interface{})
 		if &output_2_0[0] != &output[0] {
@@ -844,8 +865,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		var output map[string]interface{}
 		L.DoString(`t = {foo=17}; t["bar"] = t`)
 		L.GetGlobal("t")
-		m := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = m.(map[string]interface{})
+		LuaToGo(L, -1, &output)
 		output_1 := output["bar"].(map[string]interface{})
 		output["foo"] = 18
 		if output["foo"] != output_1["foo"] {
@@ -857,8 +877,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		var output map[string]interface{}
 		L.DoString(`t = {foo=17}; v = {baz=t}; t["bar"] = v`)
 		L.GetGlobal("t")
-		m := LuaToGo(L, reflect.TypeOf(output), -1)
-		output = m.(map[string]interface{})
+		LuaToGo(L, -1, &output)
 		output_bar := output["bar"].(map[string]interface{})
 		output_bar_baz := output_bar["baz"].(map[string]interface{})
 		output["foo"] = 18

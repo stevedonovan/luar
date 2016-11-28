@@ -1,6 +1,9 @@
 package luar
 
+// TODO: Test all these lo functions, test call on non-functions and get/set on non-tables.
+
 import (
+	"errors"
 	"reflect"
 	"strings"
 
@@ -16,6 +19,7 @@ type LuaObject struct {
 
 // Global creates a new LuaObject refering to the global environment.
 func Global(L *lua.State) *LuaObject {
+	// TODO: Remove this function.
 	L.GetGlobal("_G")
 	val := NewLuaObject(L, -1)
 	L.Pop(1)
@@ -30,8 +34,7 @@ func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	return &LuaObject{L, ref, tp}
 }
 
-// NewLuaObjectFromName creates a new LuaObject from global qualified name, using
-// Lookup.
+// NewLuaObjectFromName creates a new LuaObject from global qualified name.
 func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 	lookup(L, path, 0)
 	val := NewLuaObject(L, -1)
@@ -40,103 +43,105 @@ func NewLuaObjectFromName(L *lua.State, path string) *LuaObject {
 }
 
 // NewLuaObjectFromValue creates a new LuaObject from a Go value.
-// Note that this _will_ convert any slices or maps into Lua tables.
+// Note that this will convert any slices or maps into Lua tables.
 func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 	GoToLua(L, val)
 	return NewLuaObject(L, -1)
 }
 
+// Call calls a Lua function, given the desired result array and the arguments.
+// 'results' must be a pointer or a slice.
+// If the function returns more values than can be stored in the 'results'
+// argument, they will be ignored.
+func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
+	// TODO: Allow for dynamic results len. Should be pointer to Slice/Struct?
+	/*
+			New rules to implement:
+			- If call returns one element, then elem is stored to whatever pointer it is.
+			- If multiple, then must be a pointer to slice/struct.
+
+		Return error if cannot convert or if non pointer to slice/struct on multiple.
+	*/
+	L := lo.L
+	// Push the function.
+	lo.Push()
+	// Push the args.
+	for _, arg := range args {
+		GoToLuaProxy(L, arg)
+	}
+
+	res := reflect.ValueOf(results)
+	switch res.Kind() {
+	case reflect.Ptr:
+		err := L.Call(len(args), 1)
+		if err != nil {
+			return err
+		}
+		return LuaToGo(L, -1, res.Interface())
+
+	case reflect.Slice:
+		resStart := L.GetTop()
+		nresults := res.Len()
+		err := L.Call(len(args), nresults)
+		if err != nil {
+			return err
+		}
+		resT := res.Type().Elem()
+		for i := 0; i < nresults; i++ {
+			val := reflect.New(resT)
+			err = LuaToGo(L, resStart+i, val.Interface())
+			if err != nil {
+				L.Pop(nresults)
+				return err
+			}
+			val = val.Elem()
+			res.Index(i).Set(val)
+		}
+		// Nullify the remaining elements if any.
+		for i := nresults; i < res.Len(); i++ {
+			res.Index(i).Set(reflect.Zero(resT))
+		}
+		L.Pop(nresults)
+
+	default:
+		return errors.New("result argument must be a pointer or a slice")
+	}
+
+	return nil
+}
+
+// Close frees the Lua reference of this object.
+func (lo *LuaObject) Close() {
+	lo.L.Unref(lua.LUA_REGISTRYINDEX, lo.Ref)
+}
+
 // Get returns the Go value indexed at 'key' in the Lua object.
-func (lo *LuaObject) Get(key string) interface{} {
-	lo.Push() // the table
+func (lo *LuaObject) Get(key string, a interface{}) error {
+	// The object is assumed to be a table.
+	lo.Push()
+	defer lo.L.Pop(2)
 	lookup(lo.L, key, -1)
-	val := LuaToGo(lo.L, nil, -1)
-	lo.L.Pop(2)
-	return val
+	return LuaToGo(lo.L, -1, a)
 }
 
 // Geti return the value indexed at 'idx'.
-func (lo *LuaObject) Geti(idx int64) interface{} {
-	L := lo.L
-	lo.Push() // the table
-	L.PushInteger(idx)
-	L.GetTable(-2)
-	val := LuaToGo(L, nil, -1)
-	L.Pop(1) // the  table
-	return val
+func (lo *LuaObject) Geti(idx int64, a interface{}) error {
+	// The object is assumed to be a table.
+	lo.Push()
+	defer lo.L.Pop(1)
+	lo.L.PushInteger(idx)
+	lo.L.GetTable(-2)
+	return LuaToGo(lo.L, -1, a)
 }
 
 // GetObject returns the Lua object indexed at 'key' in the Lua object.
 func (lo *LuaObject) GetObject(key string) *LuaObject {
-	lo.Push() // the table
+	// The object is assumed to be a table.
+	lo.Push()
 	lookup(lo.L, key, -1)
 	val := NewLuaObject(lo.L, -1)
 	lo.L.Pop(2)
 	return val
-}
-
-// Set sets the value at a given index 'idx'.
-func (lo *LuaObject) Set(idx interface{}, val interface{}) interface{} {
-	L := lo.L
-	lo.Push() // the table
-	GoToLuaProxy(L, idx)
-	GoToLuaProxy(L, val)
-	L.SetTable(-3)
-	L.Pop(1) // the  table
-	return val
-}
-
-// Setv copies values between two tables in the same state.
-func (lo *LuaObject) Setv(src *LuaObject, keys ...string) {
-	L := lo.L
-	lo.Push()  // destination table at -2
-	src.Push() // source table at -1
-	for _, key := range keys {
-		L.GetField(-1, key) // pushes value
-		L.SetField(-3, key) // pops value
-	}
-	L.Pop(2) // clear the tables
-}
-
-// Callf calls a Lua function, given the desired return types and the arguments.
-//
-// Callf is used whenever:
-//
-// - the Lua function has multiple return values;
-//
-// - and/or you have exact types for these values.
-//
-// The first argument may be `nil` and can be used to access multiple return
-// values without caring about the exact conversion.
-func (lo *LuaObject) Callf(rtypes []reflect.Type, args ...interface{}) (res []interface{}, err error) {
-	L := lo.L
-	if rtypes == nil {
-		rtypes = []reflect.Type{nil}
-	}
-	res = make([]interface{}, len(rtypes))
-	lo.Push()                  // the function...
-	for _, arg := range args { // push the args
-		GoToLuaProxy(L, arg)
-	}
-	err = L.Call(len(args), 1)
-	if err == nil {
-		for i, t := range rtypes {
-			res[i] = LuaToGo(L, t, -1)
-		}
-		L.Pop(len(rtypes))
-	}
-	return
-}
-
-// Call calls a Lua function and return a single value, converted in a default way.
-func (lo *LuaObject) Call(args ...interface{}) (res interface{}, err error) {
-	var sres []interface{}
-	sres, err = lo.Callf(nil, args...)
-	if err != nil {
-		res = nil
-		return
-	}
-	return sres[0], nil
 }
 
 // Push pushes this Lua object on the stack.
@@ -144,9 +149,26 @@ func (lo *LuaObject) Push() {
 	lo.L.RawGeti(lua.LUA_REGISTRYINDEX, lo.Ref)
 }
 
-// Close frees the Lua reference of this object.
-func (lo *LuaObject) Close() {
-	lo.L.Unref(lua.LUA_REGISTRYINDEX, lo.Ref)
+// Set sets the value at index 'idx'.
+func (lo *LuaObject) Set(idx interface{}, a interface{}) {
+	// The object is assumed to be a table.
+	lo.Push()
+	GoToLuaProxy(lo.L, idx)
+	GoToLuaProxy(lo.L, a)
+	lo.L.SetTable(-3)
+	lo.L.Pop(1)
+}
+
+// Setv copies values between two tables in the same state.
+func (lo *LuaObject) Setv(src *LuaObject, keys ...string) {
+	L := lo.L
+	lo.Push()
+	src.Push()
+	for _, key := range keys {
+		L.GetField(-1, key)
+		L.SetField(-3, key)
+	}
+	L.Pop(2)
 }
 
 // LuaTableIter is the Go equivalent of a Lua table iterator.
@@ -175,8 +197,9 @@ func (ti *LuaTableIter) Next() bool {
 		return false
 	}
 
-	ti.Key = LuaToGo(L, nil, -2)
-	ti.Value = LuaToGo(L, nil, -1)
+	// TODO: Error check?
+	LuaToGo(L, -2, &ti.Key)
+	LuaToGo(L, -1, &ti.Value)
 	L.Pop(1) // drop value, key is now on top
 	return true
 }

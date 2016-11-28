@@ -179,11 +179,9 @@ end
 	// 2 900
 }
 
-func ExampleLuaObject_Callf() {
+func ExampleLuaObject_Call() {
 	L := luar.Init()
 	defer L.Close()
-
-	returns := luar.Types([]string{}) // []reflect.Type
 
 	const code = `
 function return_strings()
@@ -198,18 +196,17 @@ end`
 	fun := luar.NewLuaObjectFromName(L, "return_strings")
 	// Using `Call` we would get a generic `[]interface{}`, which is awkward to
 	// work with. But the return type can be specified:
-	results, err := fun.Callf(returns)
+	results := []string{}
+	err = fun.Call(&results)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	strs := results[0].([]string)
-
-	fmt.Println(strs[0])
+	fmt.Println(results[0])
 	// We get an empty string corresponding to a luar.null in a table,
 	// since that's the empty 'zero' value for a string.
-	fmt.Println(strs[1])
-	fmt.Println(strs[2])
+	fmt.Println(results[1])
+	fmt.Println(results[2])
 	// Output:
 	// one
 	//
@@ -277,15 +274,25 @@ func ExampleNewLuaObject() {
 	opts := lo.GetObject("options")
 	marked := lo.GetObject("marked")
 
-	fmt.Printf("%#v\n", lo.Get("baggins"))
-	fmt.Printf("%#v\n", lo.Get("name"))
-	fmt.Printf("%#v\n", opts.Get("leave"))
+	loPrint := func(lo *luar.LuaObject, key string) {
+		var a interface{}
+		lo.Get(key, &a)
+		fmt.Printf("%#v\n", a)
+	}
+	loPrinti := func(lo *luar.LuaObject, idx int64) {
+		var a interface{}
+		lo.Geti(idx, &a)
+		fmt.Printf("%.1f\n", a)
+	}
+	loPrint(lo, "baggins")
+	loPrint(lo, "name")
+	loPrint(opts, "leave")
 	// Note that these Get methods understand nested fields.
-	fmt.Printf("%#v\n", lo.Get("options.leave"))
-	fmt.Printf("%#v\n", lo.Get("options.tags.strong"))
+	loPrint(lo, "options.leave")
+	loPrint(lo, "options.tags.strong")
 	// Non-existent nested fields don't crash but return nil.
-	fmt.Printf("%#v\n", lo.Get("options.tags.extra.flakey"))
-	fmt.Printf("%.1f\n", marked.Geti(1))
+	loPrint(lo, "options.tags.extra.flakey")
+	loPrinti(marked, 1)
 
 	iter := lo.Iter()
 	keys := []string{}
@@ -327,7 +334,8 @@ func ExampleNewLuaObjectFromValue() {
 		"NAME": "Dolly",
 		"HOME": "where you belong",
 	})
-	res, err := gsub.Call("hello $NAME go $HOME", "%$(%u+)", gmap)
+	var res string
+	err := gsub.Call(&res, "hello $NAME go $HOME", "%$(%u+)", gmap)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -426,7 +434,11 @@ func ExampleMakeChan() {
 	luar.MakeChan(L1)
 	L1.SetGlobal("c")
 	L1.GetGlobal("c")
-	c := luar.LuaToGo(L1, nil, -1)
+	var c interface{}
+	err := luar.LuaToGo(L1, -1, &c)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	luar.Register(L2, "", luar.Map{
 		"c":     c,
@@ -452,7 +464,7 @@ Print(v)
 		wg.Done()
 	}()
 
-	err := L2.DoString(code2)
+	err = L2.DoString(code2)
 	if err != nil {
 		fmt.Println(err)
 	}

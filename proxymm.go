@@ -28,8 +28,9 @@ func channel__index(L *lua.State) int {
 		L.PushGoFunction(f)
 	case "send":
 		f := func(L *lua.State) int {
-			val := reflect.ValueOf(LuaToGo(L, t.Elem(), 1))
-			v.Send(val)
+			val := reflect.New(t.Elem())
+			LuaToGo(L, 1, val.Interface())
+			v.Send(val.Elem())
 			return 0
 		}
 		L.PushGoFunction(f)
@@ -68,7 +69,9 @@ func interface__index(L *lua.State) int {
 
 func map__index(L *lua.State) int {
 	v, t := valueOfProxy(L, 1)
-	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
+	key := reflect.New(t.Key())
+	LuaToGo(L, 2, key.Interface()) // TODO: Error check? For all mm?
+	key = key.Elem()
 	val := v.MapIndex(key)
 	if val.IsValid() {
 		GoToLuaProxy(L, val)
@@ -142,8 +145,12 @@ func map__ipairs(L *lua.State) int {
 
 func map__newindex(L *lua.State) int {
 	v, t := valueOfProxy(L, 1)
-	key := reflect.ValueOf(LuaToGo(L, t.Key(), 2))
-	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
+	key := reflect.New(t.Key())
+	LuaToGo(L, 2, key.Interface())
+	key = key.Elem()
+	val := reflect.New(t.Elem())
+	LuaToGo(L, 3, val.Interface())
+	val = val.Elem()
 	v.SetMapIndex(key, val)
 	return 0
 }
@@ -318,8 +325,10 @@ func number__unm(L *lua.State) int {
 // called. No need to check for type equality: Go's "==" operator will do it for
 // us.
 func proxy__eq(L *lua.State) int {
-	v1 := LuaToGo(L, nil, 1)
-	v2 := LuaToGo(L, nil, 2)
+	var v1 interface{}
+	LuaToGo(L, 1, &v1)
+	var v2 interface{}
+	LuaToGo(L, 2, &v2)
 	L.PushBoolean(v1 == v2)
 	return 1
 }
@@ -363,8 +372,9 @@ func slice__index(L *lua.State) int {
 				narg := L.GetTop()
 				args := []reflect.Value{}
 				for i := 1; i <= narg; i++ {
-					elem := reflect.ValueOf(LuaToGo(L, v.Type().Elem(), i))
-					args = append(args, elem)
+					elem := reflect.New(v.Type().Elem())
+					LuaToGo(L, i, elem.Interface())
+					args = append(args, elem.Elem())
 				}
 				newslice := reflect.Append(v, args...)
 				makeValueProxy(L, newslice, cSliceMeta)
@@ -420,7 +430,9 @@ func slice__newindex(L *lua.State) int {
 		t = t.Elem()
 	}
 	idx := L.ToInteger(2)
-	val := reflect.ValueOf(LuaToGo(L, t.Elem(), 3))
+	val := reflect.New(t.Elem())
+	LuaToGo(L, 3, val.Interface())
+	val = val.Elem()
 	if idx < 1 || idx > v.Len() {
 		RaiseError(L, "slice/array set: index out of range")
 	}
@@ -540,7 +552,9 @@ func struct__newindex(L *lua.State) int {
 	}
 	field := v.FieldByName(name)
 	assertValid(L, field, v, name, "field")
-	val := reflect.ValueOf(LuaToGo(L, field.Type(), 3))
+	val := reflect.New(field.Type())
+	LuaToGo(L, 3, val.Interface())
+	val = val.Elem()
 	if isPointerToPrimitive(field) {
 		field.Elem().Set(val)
 	} else {
