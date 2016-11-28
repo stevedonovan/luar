@@ -599,7 +599,9 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 // tables to either map or slice types.
 // Return an error if 'v' is not a non-nil pointer.
 func LuaToGo(L *lua.State, idx int, a interface{}) error {
-	// TODO: For now, unwrapping proxies require the same type. If we keep that behaviour, document it.
+	// LuaToGo should not pop to be consistent with L.ToString(), etc.
+	// It is also easier in practice when we want to keep working with the value on stack.
+
 	v := reflect.ValueOf(a)
 	// TODO: Allow unreferenced map? json does not do it...
 	if v.Kind() != reflect.Ptr {
@@ -746,6 +748,7 @@ func Register(L *lua.State, table string, values Map) {
 	} else if len(table) > 0 {
 		L.GetGlobal(table)
 		if L.IsNil(-1) {
+			L.Pop(1)
 			L.NewTable()
 			L.SetGlobal(table)
 			L.GetGlobal(table)
