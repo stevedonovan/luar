@@ -601,7 +601,6 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 	// See copyTableToSlice.
 	ptr := L.ToPointer(idx)
 	if !luaIsEmpty(L, idx) {
-		// TODO: If we don't handle pointers, then no need for visited.
 		visited[ptr] = v.Addr()
 	}
 
@@ -628,6 +627,7 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 		key := L.ToString(-1)
 		L.Pop(1)
 		f := v.FieldByName(fields[key])
+		// TODO: Remove f.IsValid().
 		if f.CanSet() && f.IsValid() {
 			val := reflect.New(f.Type()).Elem()
 			err := luaToGo(L, -1, val, visited)
@@ -689,19 +689,22 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 		v.Set(reflect.Zero(v.Type()))
 		return nil
 	}
-	// Derefence 'v' until a non-pointer.
-	// This initializes the values, which will be useless effort if the conversion fails.
-	for v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
-		v = v.Elem()
-	}
 
 	return luaToGo(L, idx, v, map[uintptr]reflect.Value{})
 }
 
 func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
+	// Derefence 'v' until a non-pointer.
+	// This initializes the values, which will be useless effort if the conversion fails.
+	// This must be done here so that the copyTable* functions can also call luaToGo on pointers.
+	vp := v
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		vp = v
+		v = v.Elem()
+	}
 	kind := v.Kind()
 
 	switch L.Type(idx) {
@@ -756,10 +759,13 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
 	case lua.LUA_TTABLE:
 		// TODO: Check what happens if visited is not of the right type.
-		// TODO: Check cyclic arrays / structs.
 		ptr := L.ToPointer(idx)
 		if val, ok := visited[ptr]; ok {
-			v.Set(val)
+			if v.Kind() == reflect.Struct {
+				vp.Set(val)
+			} else {
+				v.Set(val)
+			}
 			return nil
 		}
 
@@ -791,10 +797,10 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 			v.Set(reflect.MakeSlice(tslice, n, n))
 			return copyTableToSlice(L, idx, v.Elem(), visited)
 		default:
-			return ConvError{From: luaDesc(L, idx), To: v}
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
 	default:
-		return ConvError{From: luaDesc(L, idx), To: v}
+		return ConvError{From: luaDesc(L, idx), To: v.Type()}
 	}
 
 	return nil
