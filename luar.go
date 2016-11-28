@@ -623,7 +623,10 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 		idx--
 	}
 	for L.Next(idx) != 0 {
-		key := L.ToString(-2)
+		L.PushValue(-2)
+		// Warning: ToString changes the value on stack.
+		key := L.ToString(-1)
+		L.Pop(1)
 		f := v.FieldByName(fields[key])
 		if f.CanSet() && f.IsValid() {
 			val := reflect.New(f.Type()).Elem()
