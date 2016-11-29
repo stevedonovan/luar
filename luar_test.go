@@ -378,19 +378,23 @@ func TestCycleGoToLua(t *testing.T) {
 		a[1] = &a
 
 		// Pass reference so that first element can be part of the cycle.
-		Register(L, "", Map{"a": &a})
+		GoToLua(L, &a)
 
-		const code = `
-assert(#a == 2)
-assert(a[1] == 17)
-a[1] = 18
-assert(a[1] == 18)
-assert(a[2][1] == 18)
-`
-		err := L.DoString(code)
-		if err != nil {
-			t.Error(err)
+		L.RawGeti(-1, 1)
+		got := L.ToInteger(-1)
+		L.Pop(1)
+		if got != 17 {
+			t.Errorf("got %v, want 17", got)
 		}
+
+		p := L.ToPointer(-1)
+		L.RawGeti(-1, 2)
+		pp := L.ToPointer(-1)
+		if p != pp {
+			t.Error("address of repeated element differs")
+		}
+		L.Pop(2)
+		checkStack(t, L)
 	}
 }
 
