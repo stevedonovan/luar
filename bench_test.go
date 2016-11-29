@@ -75,7 +75,6 @@ func BenchmarkLuaToGoMapSlice(b *testing.B) {
 	}
 }
 
-// TODO: Fix this benchmark.
 func BenchmarkLuaToGoMapSliceUnique(b *testing.B) {
 	L := Init()
 	defer L.Close()
@@ -88,7 +87,7 @@ func BenchmarkLuaToGoMapSliceUnique(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		LuaToGo(L, -1, output)
+		LuaToGo(L, -1, &output)
 	}
 }
 
