@@ -1080,6 +1080,22 @@ for k, v in ipairs(m) do
 t[k] = v
 end`)
 	runLuaTest(t, L, []luaTestData{{`t`, `{'foo', 'bar'}`}})
+
+	mustDoString(t, L, `
+n = luar.map()
+n.foo = "bar"
+n.baz = "qux"
+u = luar.unproxify(n)
+`)
+	runLuaTest(t, L, []luaTestData{{`u`, `{foo="bar", baz="qux"}`}})
+
+	mustDoString(t, L, `
+p = {}
+for k, v in pairs(n) do
+p[k] = v
+end
+`)
+	runLuaTest(t, L, []luaTestData{{`p`, `{foo="bar", baz="qux"}`}})
 }
 
 type mySlice []int
