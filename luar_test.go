@@ -1,7 +1,5 @@
 package luar
 
-// TODO: Check coverage.
-
 import (
 	"reflect"
 	"runtime"
@@ -212,17 +210,11 @@ func TestChan(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		err := L1.DoString(`c.send(17)`)
-		if err != nil {
-			t.Error(err)
-		}
+		mustDoString(t, L1, `c.send(17)`)
 		wg.Done()
 	}()
 
-	err := L2.DoString(`return c.recv()`)
-	if err != nil {
-		t.Error(err)
-	}
+	mustDoString(t, L2, `return c.recv()`)
 	got := L2.ToNumber(-1)
 	want := 17.0
 	if got != want {
@@ -601,11 +593,7 @@ function id(...)
 end
 `
 
-	err := L.DoString(code)
-	if err != nil {
-		t.Error(err)
-	}
-
+	mustDoString(t, L, code)
 	arg1 := []string{"a", "b"}
 	arg2 := Null
 	arg3 := "foobar"
@@ -617,7 +605,7 @@ end
 		*want = arg1
 
 		got := new([]string)
-		err = id.Call(&got, arg1, arg2, arg3)
+		err := id.Call(&got, arg1, arg2, arg3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -639,7 +627,7 @@ end
 	{
 		want := []interface{}{arg1, nil, arg3}
 		got := []interface{}{}
-		err = id.Call(&got, arg1, arg2, arg3)
+		err := id.Call(&got, arg1, arg2, arg3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -675,7 +663,7 @@ end
 			Res2 int
 			Res3 string
 		}{}
-		err = id.Call(&got, arg1, arg2, arg3)
+		err := id.Call(&got, arg1, arg2, arg3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1154,10 +1142,7 @@ end
 end
 `
 
-	err := L.DoString(code)
-	if err != nil {
-		t.Error(err)
-	}
+	mustDoString(t, L, code)
 	runLuaTest(t, L, []luaTestData{
 		{`a3`, `'ï'`},
 		{`a[1]`, `'n'`}, // Go string indexing does not support unicode.
