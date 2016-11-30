@@ -1075,7 +1075,6 @@ func TestProxyMap(t *testing.T) {
 		{`a.Foo()`, `2`},
 		{`a.foo`, `17`},
 		{`a.empty`, `nil`},
-		{`a[5]`, `nil`}, // Wrong type, should return nil. TODO: Return message as well?
 		{`b.Foo`, `17`},
 		{`luar.method(b, "Foo")()`, `1`},
 		{`luar.method(b, "Nonexistent")`, `nil`},
@@ -1083,6 +1082,7 @@ func TestProxyMap(t *testing.T) {
 		{`c[1]`, `10`},
 		{`c[2]`, `20`},
 		{`c.Foo()`, `2`},
+		{`c.bar`, `nil`},
 	})
 
 	mustDoString(t, L, `t = {}
