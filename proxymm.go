@@ -85,29 +85,7 @@ func map__index(L *lua.State) int {
 		return 1
 	} else if key.Kind() == reflect.String {
 		name := key.String()
-
-		// From 'pushGoMethod':
-		val := v.MethodByName(name)
-		if !val.IsValid() {
-			T := v.Type()
-			// Could not resolve this method. Perhaps it's defined on the pointer?
-			if T.Kind() != reflect.Ptr {
-				if v.CanAddr() {
-					v = v.Addr()
-				} else {
-					vp := reflect.New(T)
-					vp.Elem().Set(v)
-					v = vp
-				}
-			}
-			val = v.MethodByName(name)
-			// Unlike 'pushGoMethod', do not panic.
-			if !val.IsValid() {
-				L.PushNil()
-				return 1
-			}
-		}
-		GoToLua(L, val)
+		pushGoMethod(L, name, v)
 		return 1
 	}
 	return 0
@@ -558,7 +536,9 @@ func struct__newindex(L *lua.State) int {
 		v = v.Elem()
 	}
 	field := v.FieldByName(name)
-	assertValid(L, field, v, name, "field")
+	if !field.IsValid() {
+		RaiseError(L, "no field named `%s` for type %s", name, v.Type())
+	}
 	val := reflect.New(field.Type())
 	LuaToGo(L, 3, val.Interface())
 	val = val.Elem()

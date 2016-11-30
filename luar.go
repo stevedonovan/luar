@@ -875,12 +875,6 @@ func Register(L *lua.State, table string, values Map) {
 	}
 }
 
-func assertValid(L *lua.State, v reflect.Value, parent reflect.Value, name string, what string) {
-	if !v.IsValid() {
-		RaiseError(L, "no %s named `%s` for type %s", what, name, parent.Type())
-	}
-}
-
 // Closest we'll get to a typeof operator.
 func typeof(a interface{}) reflect.Type {
 	return reflect.TypeOf(a).Elem()

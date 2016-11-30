@@ -182,7 +182,10 @@ func pushGoMethod(L *lua.State, name string, v reflect.Value) {
 			}
 		}
 		method = v.MethodByName(name)
-		assertValid(L, method, v, name, "method")
+		if !method.IsValid() {
+			L.PushNil()
+			return
+		}
 	}
 	GoToLua(L, method)
 }
