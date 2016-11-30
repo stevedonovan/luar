@@ -748,6 +748,12 @@ func (m *myMap) Foo() int {
 	return len(*m)
 }
 
+type myIntMap map[int]int
+
+func (m *myIntMap) Foo() int {
+	return len(*m)
+}
+
 func TestMap(t *testing.T) {
 	L := Init()
 	defer L.Close()
@@ -1055,6 +1061,7 @@ func TestProxyMap(t *testing.T) {
 
 	a := myMap{"foo": 17, "bar": 170}
 	b := myMap{"Foo": 17}
+	c := myIntMap{1: 10, 2: 20}
 	m := map[interface{}]string{
 		-1:  "ko",
 		0:   "ko",
@@ -1062,7 +1069,7 @@ func TestProxyMap(t *testing.T) {
 		2:   "bar",
 		"3": "baz",
 	}
-	Register(L, "", Map{"a": a, "b": b, "m": m})
+	Register(L, "", Map{"a": a, "b": b, "c": c, "m": m})
 
 	runLuaTest(t, L, []luaTestData{
 		{`a.Foo()`, `2`},
@@ -1073,6 +1080,9 @@ func TestProxyMap(t *testing.T) {
 		{`luar.method(b, "Foo")()`, `1`},
 		{`luar.method(b, "Nonexistent")`, `nil`},
 		{`luar.method(nil, "Nonproxy")`, `nil`},
+		{`c[1]`, `10`},
+		{`c[2]`, `20`},
+		{`c.Foo()`, `2`},
 	})
 
 	mustDoString(t, L, `t = {}

@@ -69,22 +69,21 @@ func interface__index(L *lua.State) int {
 	return 1
 }
 
+// TODO: Should map[string] and struct allow direct method calls? Check if first letter is uppercase?
 func map__index(L *lua.State) int {
 	v, t := valueOfProxy(L, 1)
 	key := reflect.New(t.Key())
 	err := LuaToGo(L, 2, key.Interface())
-	if err != nil {
-		// No need to panic.
-		L.PushNil()
-		return 1
+	if err == nil {
+		key = key.Elem()
+		val := v.MapIndex(key)
+		if val.IsValid() {
+			GoToLuaProxy(L, val)
+			return 1
+		}
 	}
-	key = key.Elem()
-	val := v.MapIndex(key)
-	if val.IsValid() {
-		GoToLuaProxy(L, val)
-		return 1
-	} else if key.Kind() == reflect.String {
-		name := key.String()
+	if L.IsString(2) {
+		name := L.ToString(2)
 		pushGoMethod(L, name, v)
 		return 1
 	}
