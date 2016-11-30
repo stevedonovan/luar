@@ -280,7 +280,7 @@ func TestCycleGoToLua(t *testing.T) {
 		output_1 := L.ToPointer(-1)
 		L.SetTop(0)
 		if output != output_1 {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -298,7 +298,7 @@ func TestCycleGoToLua(t *testing.T) {
 		output_1_1 := L.ToPointer(-1)
 		L.SetTop(0)
 		if output != output_1_1 {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -312,7 +312,7 @@ func TestCycleGoToLua(t *testing.T) {
 		output_bar := L.ToPointer(-1)
 		L.SetTop(0)
 		if output != output_bar {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -330,7 +330,7 @@ func TestCycleGoToLua(t *testing.T) {
 		output_qux_baz := L.ToPointer(-1)
 		L.SetTop(0)
 		if output != output_qux_baz {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -346,7 +346,7 @@ func TestCycleGoToLua(t *testing.T) {
 		output_l1_l2_l1 := L.ToPointer(-1)
 		L.SetTop(0)
 		if output_l1 != output_l1_l2_l1 {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -368,7 +368,7 @@ func TestCycleGoToLua(t *testing.T) {
 
 		L.SetTop(0)
 		if output_l1 != output_l1_l2_l1 || output_l1_l2 != output_l1_l2_l1_l2 {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -408,7 +408,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		L.Pop(1)
 		output_1 := output[1].([]interface{})
 		if &output_1[0] != &output[0] {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -424,7 +424,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		output_1 := output[1].([]interface{})
 		output_1_0 := output_1[0].([]interface{})
 		if &output_1_0[0] != &output[0] {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -440,7 +440,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		output_2 := output[2].([]interface{})
 		output_2_0 := output_2[0].([]interface{})
 		if &output_2_0[0] != &output[0] {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -456,7 +456,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		output_1 := output["bar"].(map[string]interface{})
 		output["foo"] = 18
 		if output["foo"] != output_1["foo"] {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -473,7 +473,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		output_bar_baz := output_bar["baz"].(map[string]interface{})
 		output["foo"] = 18
 		if output["foo"] != output_bar_baz["foo"] {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -487,7 +487,7 @@ func TestCycleLuaToGo(t *testing.T) {
 			t.Error(err)
 		}
 		if output.Next != output {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 
@@ -501,7 +501,7 @@ func TestCycleLuaToGo(t *testing.T) {
 		}
 		L.Pop(1)
 		if output.Next.Next != &output {
-			t.Errorf("address of repeated element differs")
+			t.Error("address of repeated element differs")
 		}
 	}
 }
