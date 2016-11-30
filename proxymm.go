@@ -385,19 +385,13 @@ func slice__index(L *lua.State) int {
 			L.PushGoFunction(f)
 		case "cap":
 			L.PushInteger(int64(v.Cap()))
-		case "sub":
-			f := func(L *lua.State) int {
-				i1, i2 := L.ToInteger(1), L.ToInteger(2)
-				newslice := v.Slice(i1-1, i2)
-				makeValueProxy(L, newslice, cSliceMeta)
-				return 1
-			}
-			L.PushGoFunction(f)
+		case "slice":
+			L.PushGoFunction(slicer(L, v, cSliceMeta))
 		default:
 			pushGoMethod(L, name, v)
 		}
 	} else {
-		L.RaiseError("slice/array requires integer index")
+		L.RaiseError("non-integer slice/array index")
 	}
 	return 1
 }
@@ -475,20 +469,25 @@ func string__concat(L *lua.State) int {
 
 	return 1
 }
+
 func string__index(L *lua.State) int {
 	v, _ := valueOfProxy(L, 1)
-	name := L.ToString(2)
-	if name == "sub" {
-		f := func(L *lua.State) int {
-			i1, i2 := L.ToInteger(1), L.ToInteger(2)
-			vn := v.Slice(i1-1, i2)
-			makeValueProxy(L, vn, cStringMeta)
-			return 1
+	if L.IsNumber(2) {
+		idx := L.ToInteger(2)
+		if idx < 1 || idx > v.Len() {
+			L.RaiseError("index out of range")
 		}
-		L.PushGoFunction(f)
-
+		v := v.Index(idx - 1).Convert(reflect.TypeOf(""))
+		GoToLuaProxy(L, v)
+	} else if L.IsString(2) {
+		name := L.ToString(2)
+		if name == "slice" {
+			L.PushGoFunction(slicer(L, v, cStringMeta))
+		} else {
+			pushGoMethod(L, name, v)
+		}
 	} else {
-		pushGoMethod(L, name, v)
+		L.RaiseError("non-integer string index")
 	}
 	return 1
 }

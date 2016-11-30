@@ -1125,8 +1125,10 @@ func TestProxySlice(t *testing.T) {
 	runLuaTest(t, L, []luaTestData{
 		{`a.Foo()`, `6`},
 		{`a[1]`, `17`},
-		{`a.sub(3,4)[1]`, `18`},
-		{`a.sub(3,4)[2]`, `19`},
+		{`a.slice(1, 2)[1]`, `17`},
+		{`a.slice(#a, #a+1)[1]`, `2`},
+		{`a.slice(3, 5)[1]`, `18`},
+		{`a.slice(3, 5)[2]`, `19`},
 	})
 }
 
@@ -1136,7 +1138,10 @@ func TestProxyString(t *testing.T) {
 
 	a := myStringA("naïveté")
 
-	Register(L, "", Map{"a": a})
+	Register(L, "", Map{
+		"a":          a,
+		"newStringA": newStringA,
+	})
 
 	const code = `
 for k, v in ipairs(a) do
@@ -1151,7 +1156,12 @@ end
 	if err != nil {
 		t.Error(err)
 	}
-	runLuaTest(t, L, []luaTestData{{`a3`, `'ï'`}})
+	runLuaTest(t, L, []luaTestData{
+		{`a3`, `'ï'`},
+		{`a[1]`, `'n'`}, // Go string indexing does not support unicode.
+		{`a.slice(2, 3)`, `newStringA('a')`},
+		{`a.slice(2, 3)[1]`, `'a'`},
+	})
 }
 
 // Get and set public fields in struct proxies.

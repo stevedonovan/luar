@@ -212,6 +212,21 @@ func pushNumberValue(L *lua.State, a interface{}, t1, t2 reflect.Type) {
 	}
 }
 
+func slicer(L *lua.State, v reflect.Value, metatable string) lua.LuaGoFunction {
+	return func(L *lua.State) int {
+		L.CheckInteger(1)
+		L.CheckInteger(2)
+		i := L.ToInteger(1) - 1
+		j := L.ToInteger(2) - 1
+		if i < 0 || i >= v.Len() || i > j || j > v.Len() {
+			L.RaiseError("slice bounds out of range")
+		}
+		vn := v.Slice(i, j)
+		makeValueProxy(L, vn, metatable)
+		return 1
+	}
+}
+
 // Shorthand for kind-switches.
 func unsizedKind(v reflect.Value) reflect.Kind {
 	switch v.Kind() {
