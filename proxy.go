@@ -165,14 +165,6 @@ func makeValueProxy(L *lua.State, v reflect.Value, proxyMT string) {
 	L.SetMetaTable(-2)
 }
 
-func mustUnwrapProxy(L *lua.State, idx int) interface{} {
-	if !isValueProxy(L, idx) {
-		RaiseError(L, "arg #%d is not a proxy", idx)
-	}
-	v, _ := valueOfProxy(L, idx)
-	return v.Interface()
-}
-
 func pushGoMethod(L *lua.State, name string, v reflect.Value) {
 	method := v.MethodByName(name)
 	if !method.IsValid() {
