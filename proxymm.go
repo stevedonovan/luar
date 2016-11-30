@@ -520,6 +520,7 @@ func struct__index(L *lua.State) int {
 		pushGoMethod(L, name, vp)
 	} else {
 		if isPointerToPrimitive(field) {
+			// TODO: Why dereferencing the pointer?
 			GoToLuaProxy(L, field.Elem())
 		} else {
 			GoToLuaProxy(L, field)
@@ -542,6 +543,7 @@ func struct__newindex(L *lua.State) int {
 	LuaToGo(L, 3, val.Interface())
 	val = val.Elem()
 	if isPointerToPrimitive(field) {
+		// TODO: Why dereferencing the pointer?
 		field.Elem().Set(val)
 	} else {
 		field.Set(val)
