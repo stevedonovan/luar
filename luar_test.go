@@ -1026,7 +1026,7 @@ func TestProxyScalars(t *testing.T) {
 		{`i%2`, `newIntA(1)`},
 		{`i==3`, `false`},
 		{`i~=3`, `true`},
-		// <, >, <= and >= do not work between number and userdata.
+		// <, >, <= and >= do not work between number/string and userdata.
 		// Number & number proxy
 		{`2+i`, `newIntA(5)`},
 		{`2*i`, `newIntA(6)`},
@@ -1047,6 +1047,8 @@ func TestProxyScalars(t *testing.T) {
 		// {`s1`, `"foo"`}, // Not equal.
 		{`#s1`, `3`},
 		{`s1 .. "bar"`, `newStringA("foobar")`},
+		{`"bar" .. s1`, `newStringA("barfoo")`},
+		{`s1 < s2`, `false`},
 		{`s1 .. s1`, `newStringA("foofoo")`},
 		{`s1 .. s2`, `"foobar"`},
 		{`s1 .. 17`, `newStringA("foo17")`},
