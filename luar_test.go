@@ -587,81 +587,98 @@ func TestGoToLuaFunction(t *testing.T) {
 	})
 }
 
-// TODO: Rewrite this test.
-func TestLuaObjectCallSlice(t *testing.T) {
+func TestLuaObjectCall(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
 	const code = `
-Libs = {}
-function Libs.fun(s,i,t,m)
-	assert(s == 'hello')
-	assert(i == 42)
-	-- Slices and maps are passed as proxies.
-	assert(type(t) == 'userdata' and t[1] == 42)
-	assert(type(m) == 'userdata' and m.name == 'Joe')
-	return 'ok'
-end`
+function id(...)
+	return ...
+end
+`
 
 	err := L.DoString(code)
 	if err != nil {
 		t.Error(err)
 	}
 
-	fun := NewLuaObjectFromName(L, "Libs.fun")
+	arg1 := []string{"a", "b"}
+	arg2 := Null
+	arg3 := "foobar"
 
-	var got interface{}
-	err = fun.Call(&got, "hello", 42, []int{42, 66, 104}, map[string]string{
-		"name": "Joe",
-	})
-	if err != nil {
-		t.Error(err)
-	}
-	if got.(string) != "ok" {
-		t.Error("did not get correct slice of slices!")
-	}
-}
+	id := NewLuaObjectFromName(L, "id")
 
-// TODO: Rewrite this test.
-func TestLuaObjectCallSliceArgs(t *testing.T) {
-	L := Init()
-	defer L.Close()
+	{
+		want := new([]string)
+		*want = arg1
 
-	const code = `
-function return_slices()
-    return {'1a', '1b'}, luar.null, {'3a'}
-end`
-
-	err := L.DoString(code)
-	if err != nil {
-		t.Error(err)
-	}
-
-	fun := NewLuaObjectFromName(L, "return_slices")
-
-	exWant := [][]string{
-		{"1a", "1b"},
-		nil,
-		{"3a"},
-		nil,
-	}
-	results := make([][]string, 4)
-	for i := 0; i < len(results); i++ {
-		got := results[:i]
-		want := exWant[:i]
-		err = fun.Call(got)
+		got := new([]string)
+		err = id.Call(&got, arg1, arg2, arg3)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(want, got) {
-			t.Errorf("want %q, got %q", want, got)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %q, want %q", got, want)
 		}
+		checkStack(t, L)
+
+		foo := NewLuaObjectFromName(L, "foo")
+		err = foo.Call(&got, arg1, arg2, arg3)
+		wantErr := "attempt to call a nil value"
+		gotErr := err.Error()
+		if err == nil || gotErr != wantErr {
+			t.Fatalf("got error %q, want %q", gotErr, wantErr)
+		}
+		checkStack(t, L)
 	}
 
-	var empty [][]string
-	err = fun.Call(empty)
-	if err != nil {
-		t.Error(err)
+	{
+		want := []interface{}{arg1, nil, arg3}
+		got := []interface{}{}
+		err = id.Call(&got, arg1, arg2, arg3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %q, want %q", got, want)
+		}
+		checkStack(t, L)
+
+		got = make([]interface{}, 4)
+		err = id.Call(&got, arg1, arg2, arg3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %q, want %q", got, want)
+		}
+		checkStack(t, L)
+	}
+
+	{
+		want := struct {
+			Res1 []string
+			Res2 int
+			Res3 string
+		}{
+			Res1: arg1,
+			Res2: 0,
+			Res3: arg3,
+		}
+
+		got := struct {
+			Res1 []string
+			Res2 int
+			Res3 string
+		}{}
+		err = id.Call(&got, arg1, arg2, arg3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %q, want %q", got, want)
+		}
+		checkStack(t, L)
 	}
 }
 

@@ -17,6 +17,8 @@ type LuaObject struct {
 	Type string
 }
 
+var ErrLuaObjectCall = errors.New("results must be a pointer to pointer/slice/struct")
+
 // NewLuaObject creates a new LuaObject from stack index.
 func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	tp := L.LTypename(idx)
@@ -40,19 +42,18 @@ func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 	return NewLuaObject(L, -1)
 }
 
-// Call calls a Lua function, given the desired result array and the arguments.
-// 'results' must be a pointer or a slice.
+// Call calls a Lua function, given the desired results and the arguments.
+// 'results' must be a pointer to a pointer/struct/slice.
+//
+// - If a pointer, then only the first result is stored to that pointer.
+//
+// - If a struct with 'n' fields, then the first n results are stored in the field.
+//
+// - If a slice, then all the results are stored in the slice. The slice is re-allocated if necessary.
+//
 // If the function returns more values than can be stored in the 'results'
 // argument, they will be ignored.
 func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
-	// TODO: Allow for dynamic results len. Should be pointer to Slice/Struct?
-	/*
-			New rules to implement:
-			- If call returns one element, then elem is stored to whatever pointer it is.
-			- If multiple, then must be a pointer to slice/struct.
-
-		Return error if cannot convert or if non pointer to slice/struct on multiple.
-	*/
 	L := lo.L
 	// Push the function.
 	lo.Push()
@@ -61,42 +62,73 @@ func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
 		GoToLuaProxy(L, arg)
 	}
 
-	res := reflect.ValueOf(results)
+	resptr := reflect.ValueOf(results)
+	if resptr.Kind() != reflect.Ptr {
+		return ErrLuaObjectCall
+	}
+	res := resptr.Elem()
+
 	switch res.Kind() {
 	case reflect.Ptr:
 		err := L.Call(len(args), 1)
+		defer L.Pop(1)
 		if err != nil {
 			return err
 		}
-		defer L.Pop(1)
 		return LuaToGo(L, -1, res.Interface())
 
 	case reflect.Slice:
-		resStart := L.GetTop()
-		nresults := res.Len()
-		err := L.Call(len(args), nresults)
+		residx := L.GetTop() - len(args)
+		err := L.Call(len(args), lua.LUA_MULTRET)
 		if err != nil {
+			L.Pop(1)
 			return err
 		}
-		resT := res.Type().Elem()
+
+		nresults := L.GetTop() - residx + 1
+		defer L.Pop(nresults)
+		t := res.Type()
+
+		// Adjust the length of the slice.
+		if res.IsNil() || nresults > res.Len() {
+			v := reflect.MakeSlice(t, nresults, nresults)
+			res.Set(v)
+		} else if nresults < res.Len() {
+			res.SetLen(nresults)
+		}
+
 		for i := 0; i < nresults; i++ {
-			val := reflect.New(resT)
-			err = LuaToGo(L, resStart+i, val.Interface())
+			err = LuaToGo(L, residx+i, res.Index(i).Addr().Interface())
 			if err != nil {
-				L.Pop(nresults)
 				return err
 			}
-			val = val.Elem()
-			res.Index(i).Set(val)
 		}
-		// Nullify the remaining elements if any.
-		for i := nresults; i < res.Len(); i++ {
-			res.Index(i).Set(reflect.Zero(resT))
+
+	case reflect.Struct:
+		exportedFields := []reflect.Value{}
+		for i := 0; i < res.NumField(); i++ {
+			if res.Field(i).CanInterface() {
+				exportedFields = append(exportedFields, res.Field(i).Addr())
+			}
 		}
-		L.Pop(nresults)
+		nresults := len(exportedFields)
+		err := L.Call(len(args), nresults)
+		if err != nil {
+			L.Pop(1)
+			return err
+		}
+		defer L.Pop(nresults)
+		residx := L.GetTop() - nresults + 1
+
+		for i := 0; i < nresults; i++ {
+			err = LuaToGo(L, residx+i, exportedFields[i].Interface())
+			if err != nil {
+				return err
+			}
+		}
 
 	default:
-		return errors.New("result argument must be a pointer or a slice")
+		return ErrLuaObjectCall
 	}
 
 	return nil

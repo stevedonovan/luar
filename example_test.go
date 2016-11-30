@@ -187,7 +187,7 @@ func ExampleLuaObject_Call() {
 
 	const code = `
 function return_strings()
-	return {'one', luar.null, 'three'}
+	return 'one', luar.null, 'three'
 end`
 
 	err := L.DoString(code)
@@ -374,13 +374,13 @@ func ExampleNewLuaObjectFromValue() {
 		"NAME": "Dolly",
 		"HOME": "where you belong",
 	})
-	var res string
+	var res = new(string)
 	err := gsub.Call(&res, "Hello $NAME, go $HOME", "%$(%u+)", gmap)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(res)
+	fmt.Println(*res)
 	// Output:
 	// Hello Dolly, go where you belong
 }
