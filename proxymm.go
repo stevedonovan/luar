@@ -341,7 +341,7 @@ func slice__index(L *lua.State) int {
 	if L.IsNumber(2) {
 		idx := L.ToInteger(2)
 		if idx < 1 || idx > v.Len() {
-			RaiseError(L, "slice/array get: index out of range")
+			L.RaiseError("slice/array get: index out of range")
 		}
 		v := v.Index(idx - 1)
 		GoToLuaProxy(L, v)
@@ -380,7 +380,7 @@ func slice__index(L *lua.State) int {
 			pushGoMethod(L, name, v)
 		}
 	} else {
-		RaiseError(L, "slice/array requires integer index")
+		L.RaiseError("slice/array requires integer index")
 	}
 	return 1
 }
@@ -419,7 +419,7 @@ func slice__newindex(L *lua.State) int {
 	LuaToGo(L, 3, val.Interface())
 	val = val.Elem()
 	if idx < 1 || idx > v.Len() {
-		RaiseError(L, "slice/array set: index out of range")
+		L.RaiseError("slice/array set: index out of range")
 	}
 	v.Index(idx - 1).Set(val)
 	return 0
@@ -537,7 +537,7 @@ func struct__newindex(L *lua.State) int {
 	}
 	field := v.FieldByName(name)
 	if !field.IsValid() {
-		RaiseError(L, "no field named `%s` for type %s", name, v.Type())
+		L.RaiseError(fmt.Sprintf("no field named `%s` for type %s", name, v.Type()))
 	}
 	val := reflect.New(field.Type())
 	LuaToGo(L, 3, val.Interface())

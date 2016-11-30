@@ -252,7 +252,7 @@ func copyStructToTable(L *lua.State, v reflect.Value, visited visitor) {
 func callGoFunction(L *lua.State, v reflect.Value, args []reflect.Value) []reflect.Value {
 	defer func() {
 		if x := recover(); x != nil {
-			RaiseError(L, "error %s", x)
+			L.RaiseError(fmt.Sprintf("error %s", x))
 		}
 	}()
 	results := v.Call(args)
@@ -286,7 +286,7 @@ func goToLuaFunction(L *lua.State, v reflect.Value) lua.LuaGoFunction {
 			val := reflect.New(t)
 			err := LuaToGo(L, i+1, val.Interface())
 			if err != nil {
-				RaiseError(L, "cannot convert go function argument #%v: %v", i, err)
+				L.RaiseError(fmt.Sprintf("cannot convert Go function argument #%v: %v", i, err))
 			}
 			args[i] = val.Elem()
 		}
@@ -297,7 +297,7 @@ func goToLuaFunction(L *lua.State, v reflect.Value) lua.LuaGoFunction {
 				val := reflect.New(lastT)
 				err := LuaToGo(L, i, val.Interface())
 				if err != nil {
-					RaiseError(L, "cannot convert go function argument #%v: %v", i, err)
+					L.RaiseError(fmt.Sprintf("cannot convert Go function argument #%v: %v", i, err))
 				}
 				args = append(args, val.Elem())
 			}
@@ -829,17 +829,6 @@ func isNewType(t reflect.Type) bool {
 
 	pt := types[int(t.Kind())]
 	return pt != t
-}
-
-// RaiseError raises a Lua error from Go code.
-func RaiseError(L *lua.State, format string, args ...interface{}) {
-	// TODO: Rename to Fatalf?
-	// TODO: Don't use and always return errors? Test what happens in examples. Can we continue?
-	// TODO: Use golua's RaiseError?
-	L.Where(1)
-	pos := L.ToString(-1)
-	L.Pop(1)
-	panic(L.NewError(pos + fmt.Sprintf(format, args...)))
 }
 
 // Register makes a number of Go values available in Lua code.

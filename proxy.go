@@ -68,10 +68,9 @@ func isValueProxy(L *lua.State, idx int) bool {
 
 func luaToGoValue(L *lua.State, idx int) (reflect.Value, reflect.Type) {
 	var a interface{}
-	// TODO: Keep the RaiseError or not? Since it is called in proxymm, yes.
 	err := LuaToGo(L, idx, &a)
 	if err != nil {
-		RaiseError(L, "%v", err)
+		L.RaiseError(err.Error())
 	}
 	return reflect.ValueOf(a), reflect.TypeOf(a)
 }
@@ -253,7 +252,7 @@ func valueToNumber(L *lua.State, v reflect.Value) float64 {
 			return f
 		}
 	}
-	RaiseError(L, "cannot convert %#v to number", v)
+	L.RaiseError(fmt.Sprintf("cannot convert %#v to number", v))
 	return 0
 }
 
@@ -264,6 +263,6 @@ func valueToString(L *lua.State, v reflect.Value) string {
 	case reflect.String:
 		return v.String()
 	}
-	RaiseError(L, "cannot convert to string")
+	L.RaiseError("cannot convert to string")
 	return ""
 }
