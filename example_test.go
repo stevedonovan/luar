@@ -134,8 +134,8 @@ func ExampleGoToLua() {
 //
 // An arbitrary Go function is callable from Lua, and list-like tables become
 // slices on the Go side. The Go function returns a map, which is wrapped as a
-// proxy object. You can however then copy this to a Lua table explicitly. There
-// is also `luar.unproxify` on the Lua side.
+// proxy object. You can copy this proxy to a Lua table explicitly. There is
+// also `luar.unproxify` on the Lua side to do this.
 //
 // We initialize the state with Init() to register Unproxify() as 'luar.unproxify()'.
 func ExampleInit() {

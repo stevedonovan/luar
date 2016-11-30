@@ -118,7 +118,7 @@ func (v *visitor) push(val reflect.Value) bool {
 	return true
 }
 
-// Init makes and initialize a new pre-configured Lua state.
+// Init makes and initializes a new pre-configured Lua state.
 //
 // It populates the 'luar' table with some helper functions/values:
 //
