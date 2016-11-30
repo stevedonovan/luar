@@ -935,6 +935,10 @@ func TestProxyArray(t *testing.T) {
 	runGoTest(t, L, []goTestData{
 		{`a`, &[2]int{170, 18}, ""},
 	})
+
+	// 'ipairs' on regular tables.
+	mustDoString(t, L, `t = {37}; t1 = {ipairs(t)(t, 0)}; t1 = t1[2]`)
+	runLuaTest(t, L, []luaTestData{{`t1`, `37`}})
 }
 
 type myIntA int
