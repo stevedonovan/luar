@@ -218,7 +218,7 @@ func TestChan(t *testing.T) {
 	got := L2.ToNumber(-1)
 	want := 17.0
 	if got != want {
-		t.Error("got %v, want %v", got, want)
+		t.Errorf("got %v, want %v", got, want)
 	}
 	L2.Pop(1)
 
@@ -490,7 +490,7 @@ func TestCycleLuaToGo(t *testing.T) {
 	{
 		L.DoString(`t1 = {V=17}; t2 = {V=18, Next=t1}; t1.Next=t2`)
 		L.GetGlobal("t1")
-		var output list = list{}
+		var output = list{}
 		err := LuaToGo(L, -1, &output)
 		if err != nil {
 			t.Error(err)
@@ -1226,7 +1226,7 @@ func TestScalar(t *testing.T) {
 	ibool, ok := i.(bool)
 	if !ok {
 		t.Errorf("got %T, expected type 'bool' from Lua conversion to Go interface", ibool)
-	} else if ibool != true {
+	} else if !ibool {
 		t.Errorf("got %v, expected 'true' from Lua conversion to Go interface", ibool)
 	}
 
