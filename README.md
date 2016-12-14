@@ -30,7 +30,13 @@ See golua's homepage for further installation details.
 
 An example REPL is available in the `cmd` folder.
 
-# Issues
+# Luar v2
 
+The v1 API suffers from several design issues:
 The `GoToLua` and `LuaToGo` functions take a `reflect.Type` parameter, which is
 bad design. Sadly changing this would break backward compatibility.
+
+The v2 rewrite fixes the design issues, usability and other bugs. Overall it
+greatly simplifies the API.
+
+Check it out in the `v2` branch of this repository.
