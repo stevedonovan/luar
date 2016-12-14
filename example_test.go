@@ -196,6 +196,8 @@ end`
 	}
 
 	fun := luar.NewLuaObjectFromName(L, "return_strings")
+	defer fun.Close()
+
 	// Using `Call` we would get a generic `[]interface{}`, which is awkward to
 	// work with. But the return type can be specified:
 	results := []string{}
@@ -310,34 +312,41 @@ func ExampleNewLuaObject() {
 	}
 
 	lo := luar.NewLuaObject(L, -1)
+	defer lo.Close()
 	// Can get the field itself as a Lua object, and so forth.
-	opts := lo.GetObject("options")
-	marked := lo.GetObject("marked")
+	opts, _ := lo.GetObject("options")
+	marked, _ := lo.GetObject("marked")
 
-	loPrint := func(lo *luar.LuaObject, key string) {
+	loPrint := func(lo *luar.LuaObject, subfields ...interface{}) {
 		var a interface{}
-		lo.Get(key, &a)
+		lo.Get(&a, subfields...)
 		fmt.Printf("%#v\n", a)
 	}
 	loPrinti := func(lo *luar.LuaObject, idx int64) {
 		var a interface{}
-		lo.Geti(idx, &a)
+		lo.Get(&a, idx)
 		fmt.Printf("%.1f\n", a)
 	}
 	loPrint(lo, "baggins")
 	loPrint(lo, "name")
 	loPrint(opts, "leave")
 	// Note that these Get methods understand nested fields.
-	loPrint(lo, "options.leave")
-	loPrint(lo, "options.tags.strong")
-	// Non-existent nested fields don't crash but return nil.
-	loPrint(lo, "options.tags.extra.flakey")
+	loPrint(lo, "options", "leave")
+	loPrint(lo, "options", "tags", "strong")
+	// Non-existent nested fields don't panic but return nil.
+	loPrint(lo, "options", "tags", "extra", "flakey")
 	loPrinti(marked, 1)
 
-	iter := lo.Iter()
+	iter, err := lo.Iter()
+	if err != nil {
+		log.Fatal(err)
+	}
 	keys := []string{}
-	for iter.Next() {
-		keys = append(keys, iter.Key.(string))
+	for key := ""; iter.Next(&key, nil); {
+		keys = append(keys, key)
+	}
+	if iter.Error() != nil {
+		log.Fatal(iter.Error())
 	}
 	sort.Strings(keys)
 
@@ -366,7 +375,8 @@ func ExampleNewLuaObjectFromValue() {
 	L := luar.Init()
 	defer L.Close()
 
-	gsub := luar.NewLuaObjectFromName(L, "string.gsub")
+	gsub := luar.NewLuaObjectFromName(L, "string", "gsub")
+	defer gsub.Close()
 
 	// We do have to explicitly copy the map to a Lua table, because `gsub`
 	// will not handle userdata types.
@@ -374,6 +384,8 @@ func ExampleNewLuaObjectFromValue() {
 		"NAME": "Dolly",
 		"HOME": "where you belong",
 	})
+	defer gmap.Close()
+
 	var res = new(string)
 	err := gsub.Call(&res, "Hello $NAME, go $HOME", "%$(%u+)", gmap)
 	if err != nil {
@@ -402,14 +414,17 @@ return {
 	}
 
 	lo := luar.NewLuaObject(L, -1)
+	defer lo.Close()
 
-	iter := lo.Iter()
+	iter, err := lo.Iter()
+	if err != nil {
+		log.Fatal(err)
+	}
 	keys := []string{}
 	values := map[string]float64{}
-	for iter.Next() {
-		k := iter.Key.(string)
-		keys = append(keys, k)
-		values[k] = iter.Value.(float64)
+	for key, value := "", 0.0; iter.Next(&key, &value); {
+		keys = append(keys, key)
+		values[key] = value
 	}
 	sort.Strings(keys)
 
@@ -445,11 +460,13 @@ print(os == nil)
 	})
 	env := luar.NewLuaObject(L, -1)
 	G := luar.NewLuaObjectFromName(L, "_G")
+	defer env.Close()
+	defer G.Close()
 
 	// We can copy any Lua object from "G" to env with 'Set', e.g.:
 	//   env.Set("print", G.Get("print"))
 	// A more convenient and efficient way is to do a bulk copy with 'Setv':
-	env.Setv(G, "type", "io")
+	env.Setv(G, "type", "io", "table")
 
 	// Set up sandbox.
 	L.SetfEnv(-2)

@@ -162,6 +162,7 @@ func map__pairs(L *lua.State) int {
 	iter := func(L *lua.State) int {
 		idx++
 		if idx == n {
+			// TODO: Push nothing?
 			L.PushNil()
 			return 1
 		}

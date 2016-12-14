@@ -449,7 +449,14 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 				case error:
 					L.PushString(v.Error())
 				case *LuaObject:
-					v.Push()
+					// TODO: Move out of 'proxify' condition? Check if satisfies interface?
+					if v.L == L {
+						v.Push()
+					} else {
+						// TODO: What shall we do when LuaObject state is not the current
+						// state? Copy across states? Is it always possible?
+						L.PushNil()
+					}
 				default:
 					makeValueProxy(L, vp, cStructMeta)
 				}

@@ -583,6 +583,67 @@ func TestGoToLuaFunction(t *testing.T) {
 	})
 }
 
+func TestLuaObject(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	for _, name := range [][]interface{}{{""}, {"dummy"}, {"table.concat"}} {
+		a := NewLuaObjectFromName(L, name...)
+		a.Push()
+		if L.LTypename(-1) != "nil" {
+			t.Errorf(`got %q, want "nil"`, L.LTypename(-1))
+		}
+		L.Pop(1)
+	}
+	checkStack(t, L)
+
+	mustDoString(t, L, `t = {10, 20, 30}`)
+	a := NewLuaObjectFromName(L, "t")
+	defer a.Close()
+	err := a.Set(200, 2)
+	if err != nil {
+		t.Error(err)
+	}
+	checkStack(t, L)
+	res := 0
+	err = a.Get(&res, 2)
+	if res != 200 {
+		t.Errorf(`got %q, want 200`, res)
+	}
+	checkStack(t, L)
+
+	mustDoString(t, L, `t = {foo=17, bar=18, ["1"]=19, 20, ["qux.quuz"]=21, qux={quuz=22}}`)
+	a = NewLuaObjectFromName(L, "t")
+	err = a.Set(200, 1)
+	if err != nil {
+		t.Error(err)
+	}
+	err = a.Set(190, "1")
+	if err != nil {
+		t.Error(err)
+	}
+	checkStack(t, L)
+
+	res = 0
+	err = a.Get(&res, 1)
+	if res != 200 {
+		t.Errorf(`got %q, want 200`, res)
+	}
+	err = a.Get(&res, "1")
+	if res != 190 {
+		t.Errorf(`got %q, want 190`, res)
+	}
+	err = a.Get(&res, "qux.quuz")
+	if res != 21 {
+		t.Errorf(`got %q, want 21`, res)
+	}
+	err = a.Get(&res, "qux", "quuz")
+	if res != 22 {
+		t.Errorf(`got %q, want 22`, res)
+	}
+	checkStack(t, L)
+}
+
 func TestLuaObjectCall(t *testing.T) {
 	L := Init()
 	defer L.Close()
@@ -614,11 +675,10 @@ end
 		}
 		checkStack(t, L)
 
-		foo := NewLuaObjectFromName(L, "foo")
-		err = foo.Call(&got, arg1, arg2, arg3)
-		wantErr := "attempt to call a nil value"
-		gotErr := err.Error()
-		if err == nil || gotErr != wantErr {
+		dummy := NewLuaObjectFromName(L, "dummy")
+		gotErr := dummy.Call(&got, arg1, arg2, arg3)
+		wantErr := ErrLuaObjectCallable
+		if gotErr == nil || gotErr != wantErr {
 			t.Fatalf("got error %q, want %q", gotErr, wantErr)
 		}
 		checkStack(t, L)
