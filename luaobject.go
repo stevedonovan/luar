@@ -1,7 +1,5 @@
 package luar
 
-// TODO: Test all these lo functions, test call on non-functions and get/set on non-tables.
-
 import (
 	"errors"
 	"reflect"
@@ -32,7 +30,7 @@ var (
 func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	L.PushValue(idx)
 	ref := L.Ref(lua.LUA_REGISTRYINDEX)
-	return &LuaObject{L, ref}
+	return &LuaObject{L: L, Ref: ref}
 }
 
 // NewLuaObjectFromName creates a new LuaObject from the object designated by
@@ -67,6 +65,8 @@ func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 //
 // If the function returns more values than can be stored in the 'results'
 // argument, they will be ignored.
+//
+// If 'results' is nil, results will be discarded.
 func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
 	L := lo.L
 	// Push the callable value.
@@ -76,14 +76,23 @@ func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
 			L.Pop(1)
 			return ErrLuaObjectCallable
 		}
-		// We leave the metamethod __call on stack.
+		// We leave the __call metamethod on stack.
 		L.Remove(-2)
-		// TODO: Test __call metamethod for LuaObjects.
 	}
 
 	// Push the args.
 	for _, arg := range args {
 		GoToLuaProxy(L, arg)
+	}
+
+	// Special case: discard the results.
+	if results == nil {
+		err := L.Call(len(args), 0)
+		if err != nil {
+			L.Pop(1)
+			return err
+		}
+		return nil
 	}
 
 	resptr := reflect.ValueOf(results)
@@ -165,7 +174,10 @@ func (lo *LuaObject) Close() {
 
 // get pushes the Lua value indexed at the sequence of 'subfields' from the
 // indexable value on top of the stack.
+//
 // It pushes nothing on error.
+//
+// Numeric indices start from 1: see Set().
 func get(L *lua.State, subfields ...interface{}) error {
 	// TODO: See if worth exporting.
 
@@ -227,6 +239,8 @@ func (lo *LuaObject) Push() {
 }
 
 // Set sets the value at the sequence of 'subfields' with the value 'a'.
+// Numeric indices start from 1, as in Lua: if we started from zero, access to
+// index 0 or negative indices would be shifted awkwardly.
 func (lo *LuaObject) Set(a interface{}, subfields ...interface{}) error {
 	parentKeys := subfields[:len(subfields)-1]
 	parent, err := lo.GetObject(parentKeys...)
@@ -247,17 +261,22 @@ func (lo *LuaObject) Set(a interface{}, subfields ...interface{}) error {
 		L.PushValue(-2)
 		GoToLuaProxy(L, lastField)
 		GoToLuaProxy(L, a)
-		L.Call(3, 0)
+		err := L.Call(3, 0)
+		if err != nil {
+			L.Pop(1)
+			return err
+		}
 	} else {
 		return ErrLuaObjectIndexable
 	}
 	return nil
 }
 
-// Setv copies values between two tables in the same state.
+// Setv copies values between two tables in the same Lua state.
 // It overwrites existing values.
 func (lo *LuaObject) Setv(src *LuaObject, keys ...string) error {
-	// TODO: Rename to 'copy'?
+	// TODO: Rename? This function seems to be too specialized, is it worth
+	// keeping at all?
 	L := lo.L
 	if L != src.L {
 		return ErrLuaObjectUnsharedState
@@ -313,13 +332,18 @@ func (lo *LuaObject) Setv(src *LuaObject, keys ...string) error {
 // LuaTableIter is the Go equivalent of a Lua table iterator.
 type LuaTableIter struct {
 	lo *LuaObject
-	// TODO: Negate meaning of first to make default value useful.
-	first bool
-
+	// keyRef is LUA_NOREF before iteration.
+	keyRef int
 	// Reference to the iterator in case the metamethod gets changed while
 	// iterating.
-	ref int
+	iterRef int
+	// TODO: See if this is an idiomatic implementation of error storage.
 	err error
+}
+
+// Error returns the error that happened during last iteration, if any.
+func (ti *LuaTableIter) Error() error {
+	return ti.err
 }
 
 // Iter creates a Lua iterator.
@@ -328,24 +352,21 @@ func (lo *LuaObject) Iter() (*LuaTableIter, error) {
 	lo.Push()
 	defer L.Pop(1)
 	if L.IsTable(-1) {
-		return &LuaTableIter{lo: lo, first: true, ref: lua.LUA_NOREF}, nil
+		return &LuaTableIter{lo: lo, keyRef: lua.LUA_NOREF, iterRef: lua.LUA_NOREF}, nil
 	} else if L.GetMetaField(-1, "__pairs") {
 		// __pairs(t) = iterator, t, first-key.
 		L.PushValue(-2)
-		// Only keep iterator on stack.
+		// Only keep iterator on stack, hence '1' result only.
 		err := L.Call(1, 1)
 		if err != nil {
+			L.Pop(1)
 			return nil, err
 		}
 		ref := L.Ref(lua.LUA_REGISTRYINDEX)
-		return &LuaTableIter{lo: lo, first: true, ref: ref}, nil
+		return &LuaTableIter{lo: lo, keyRef: lua.LUA_NOREF, iterRef: ref}, nil
 	} else {
 		return nil, ErrLuaObjectIndexable
 	}
-}
-
-func (ti *LuaTableIter) Error() error {
-	return ti.err
 }
 
 // Next gets the next key/value pair from the indexable value.
@@ -358,40 +379,46 @@ func (ti *LuaTableIter) Next(key, value interface{}) bool {
 		ti.err = errors.New("empty iterator")
 		return false
 	}
-
-	// TODO: What happens if we remove the __pairs metatable during iteration?
 	L := ti.lo.L
 
-	// Type/__pairs checking here is needed in case the metamethod changes during
-	// the iteration.
-
-	if ti.ref == lua.LUA_NOREF {
-		// Must be a table. WARNING: This requires the Iter() function to set
+	if ti.iterRef == lua.LUA_NOREF {
+		// Must be a table. This requires the Iter() function to set
 		// ref=LUA_NOREF.
-		if ti.first {
-			// TODO: This is not popped. Unbalanced stack?
-			ti.lo.Push()
+
+		// Push table.
+		ti.lo.Push()
+		defer L.Pop(1)
+
+		if ti.keyRef == lua.LUA_NOREF {
 			L.PushNil()
-			ti.first = false
+		} else {
+			L.RawGeti(lua.LUA_REGISTRYINDEX, ti.keyRef)
 		}
+
 		if L.Next(-2) == 0 {
+			L.Unref(lua.LUA_REGISTRYINDEX, ti.keyRef)
 			return false
 		}
 
 	} else {
-		L.RawGeti(lua.LUA_REGISTRYINDEX, ti.ref)
-		if ti.first {
-			// TODO: This is not popped. Unbalanced stack?
-			ti.lo.Push()
+		L.RawGeti(lua.LUA_REGISTRYINDEX, ti.iterRef)
+		ti.lo.Push()
+
+		if ti.keyRef == lua.LUA_NOREF {
 			L.PushNil()
-			ti.first = false
+		} else {
+			L.RawGeti(lua.LUA_REGISTRYINDEX, ti.keyRef)
 		}
+
 		err := L.Call(2, 2)
 		if err != nil {
+			L.Pop(1)
 			ti.err = err
 			return false
 		}
 		if L.IsNil(-2) {
+			L.Pop(2)
+			L.Unref(lua.LUA_REGISTRYINDEX, ti.iterRef)
 			return false
 		}
 	}
@@ -409,7 +436,11 @@ func (ti *LuaTableIter) Next(key, value interface{}) bool {
 		}
 	}
 
-	// TODO: Ref key?
-	L.Pop(1) // drop value, key is now on top
+	// Drop value, key is now on top.
+	L.Pop(1)
+
+	// Replace former key reference with new key.
+	L.Unref(lua.LUA_REGISTRYINDEX, ti.keyRef)
+	ti.keyRef = L.Ref(lua.LUA_REGISTRYINDEX)
 	return true
 }

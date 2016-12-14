@@ -3,6 +3,7 @@ package luar
 import (
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -608,7 +609,7 @@ func TestLuaObject(t *testing.T) {
 	res := 0
 	err = a.Get(&res, 2)
 	if res != 200 {
-		t.Errorf(`got %q, want 200`, res)
+		t.Errorf(`got %v, want 200`, res)
 	}
 	checkStack(t, L)
 
@@ -627,19 +628,67 @@ func TestLuaObject(t *testing.T) {
 	res = 0
 	err = a.Get(&res, 1)
 	if res != 200 {
-		t.Errorf(`got %q, want 200`, res)
+		t.Errorf(`got %v, want 200`, res)
 	}
 	err = a.Get(&res, "1")
 	if res != 190 {
-		t.Errorf(`got %q, want 190`, res)
+		t.Errorf(`got %v, want 190`, res)
 	}
 	err = a.Get(&res, "qux.quuz")
 	if res != 21 {
-		t.Errorf(`got %q, want 21`, res)
+		t.Errorf(`got %v, want 21`, res)
 	}
 	err = a.Get(&res, "qux", "quuz")
 	if res != 22 {
-		t.Errorf(`got %q, want 22`, res)
+		t.Errorf(`got %v, want 22`, res)
+	}
+	checkStack(t, L)
+}
+
+func TestLuaObjectMT(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	string__index := func(L *lua.State) int {
+		// Note: we skip error checking.
+		v, _ := valueOfProxy(L, 1)
+		k := L.ToInteger(2)
+		L.PushString(string(v.Index(k).Int()))
+		return 1
+	}
+
+	string__newindex := func(L *lua.State) int {
+		// Note: we skip error checking.
+		v, _ := valueOfProxy(L, 1)
+		k := L.ToInteger(2)
+		val := rune(L.ToInteger(3))
+		v.Index(k).Set(reflect.ValueOf(val))
+		return 0
+	}
+
+	Register(L, "", Map{"a": []rune("foobar")})
+
+	L.GetGlobal("a")
+	L.NewTable()
+	L.SetMetaMethod("__index", string__index)
+	L.SetMetaMethod("__newindex", string__newindex)
+	L.SetMetaTable(-2)
+	L.Pop(1)
+
+	a := NewLuaObjectFromName(L, "a")
+	res := ""
+	err := a.Set(rune('F'), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStack(t, L)
+
+	err = a.Get(&res, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != "F" {
+		t.Errorf(`got %v, want 'F'`, res)
 	}
 	checkStack(t, L)
 }
@@ -732,6 +781,117 @@ end
 		}
 		checkStack(t, L)
 	}
+}
+
+func TestLuaObjectCallMT(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	const code = `
+a = {17}
+setmetatable(a, { __call = function(arg) a[1] = a[1] + arg end })
+`
+
+	mustDoString(t, L, code)
+	a := NewLuaObjectFromName(L, "a")
+	err := a.Call(nil, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := 0
+	a.Get(&res, 1)
+	if res != 19 {
+		t.Fatalf("got %q, want 19", res)
+	}
+	checkStack(t, L)
+
+	err = a.Call(nil)
+	wantErr := "[string \"...\"]:3: attempt to perform arithmetic on local 'arg' (a nil value)"
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("got error %q, want %q", err, wantErr)
+	}
+	checkStack(t, L)
+}
+
+func TestLuaObjectIter(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	mustDoString(t, L, `a = {foo=10, bar=20}`)
+
+	a := NewLuaObjectFromName(L, "a")
+	iter, err := a.Iter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStack(t, L)
+
+	keys := []string{}
+	values := map[string]float64{}
+	for key, value := "", 0.0; iter.Next(&key, &value); {
+		keys = append(keys, key)
+		values[key] = value
+	}
+	sort.Strings(keys)
+
+	wantKeys := []string{"bar", "foo"}
+	if !reflect.DeepEqual(keys, wantKeys) {
+		t.Errorf("got %q, want %q", keys, wantKeys)
+	}
+
+	wantValues := map[string]float64{"foo": 10, "bar": 20}
+	if !reflect.DeepEqual(values, wantValues) {
+		t.Errorf("got %q, want %q", keys, wantValues)
+	}
+
+	checkStack(t, L)
+}
+
+func TestLuaObjectIterMT(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	Register(L, "", Map{"a": map[string]float64{"foo": 10, "bar": 20}})
+
+	a := NewLuaObjectFromName(L, "a")
+
+	iter, err := a.Iter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStack(t, L)
+
+	// Remove the metatable to see if it does not corrupt the iterator.
+	L.GetGlobal("a")
+	L.PushNil()
+	L.SetMetaTable(-2)
+	L.Pop(1)
+
+	keys := []string{}
+	values := map[string]float64{}
+	for key, value := "", 0.0; iter.Next(&key, &value); {
+		keys = append(keys, key)
+		values[key] = value
+	}
+	sort.Strings(keys)
+	checkStack(t, L)
+
+	if iter.Error() != nil {
+		t.Errorf("%q", iter.Error())
+	}
+
+	wantKeys := []string{"bar", "foo"}
+	if !reflect.DeepEqual(keys, wantKeys) {
+		t.Errorf("got %q, want %q", keys, wantKeys)
+	}
+
+	wantValues := map[string]float64{"foo": 10, "bar": 20}
+	if !reflect.DeepEqual(values, wantValues) {
+		t.Errorf("got %q, want %q", keys, wantValues)
+	}
+
+	checkStack(t, L)
 }
 
 func TestLuaToGoPointers(t *testing.T) {
