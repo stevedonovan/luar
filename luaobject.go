@@ -12,11 +12,8 @@ import (
 // We do not make the type distinction since metatables can make tables callable
 // and functions indexable.
 type LuaObject struct {
-	// TODO: Unexport?
-	L   *lua.State
-	Ref int
-	// TODO: Remove Type?
-	Type string
+	l   *lua.State
+	ref int
 }
 
 var (
@@ -30,7 +27,7 @@ var (
 func NewLuaObject(L *lua.State, idx int) *LuaObject {
 	L.PushValue(idx)
 	ref := L.Ref(lua.LUA_REGISTRYINDEX)
-	return &LuaObject{L: L, Ref: ref}
+	return &LuaObject{l: L, ref: ref}
 }
 
 // NewLuaObjectFromName creates a new LuaObject from the object designated by
@@ -68,7 +65,7 @@ func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 //
 // If 'results' is nil, results will be discarded.
 func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
-	L := lo.L
+	L := lo.l
 	// Push the callable value.
 	lo.Push()
 	if !L.IsFunction(-1) {
@@ -169,7 +166,7 @@ func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
 
 // Close frees the Lua reference of this object.
 func (lo *LuaObject) Close() {
-	lo.L.Unref(lua.LUA_REGISTRYINDEX, lo.Ref)
+	lo.l.Unref(lua.LUA_REGISTRYINDEX, lo.ref)
 }
 
 // get pushes the Lua value indexed at the sequence of 'subfields' from the
@@ -211,31 +208,31 @@ func get(L *lua.State, subfields ...interface{}) error {
 // 'a' must be a pointer as in LuaToGo.
 func (lo *LuaObject) Get(a interface{}, subfields ...interface{}) error {
 	lo.Push()
-	defer lo.L.Pop(1)
-	err := get(lo.L, subfields...)
+	defer lo.l.Pop(1)
+	err := get(lo.l, subfields...)
 	if err != nil {
 		return err
 	}
-	defer lo.L.Pop(1)
-	return LuaToGo(lo.L, -1, a)
+	defer lo.l.Pop(1)
+	return LuaToGo(lo.l, -1, a)
 }
 
 // GetObject returns the LuaObject indexed at the sequence of 'subfields'.
 func (lo *LuaObject) GetObject(subfields ...interface{}) (*LuaObject, error) {
 	lo.Push()
-	defer lo.L.Pop(1)
-	err := get(lo.L, subfields...)
+	defer lo.l.Pop(1)
+	err := get(lo.l, subfields...)
 	if err != nil {
 		return nil, err
 	}
-	val := NewLuaObject(lo.L, -1)
-	lo.L.Pop(1)
+	val := NewLuaObject(lo.l, -1)
+	lo.l.Pop(1)
 	return val, nil
 }
 
 // Push pushes this LuaObject on the stack.
 func (lo *LuaObject) Push() {
-	lo.L.RawGeti(lua.LUA_REGISTRYINDEX, lo.Ref)
+	lo.l.RawGeti(lua.LUA_REGISTRYINDEX, lo.ref)
 }
 
 // Set sets the value at the sequence of 'subfields' with the value 'a'.
@@ -248,7 +245,7 @@ func (lo *LuaObject) Set(a interface{}, subfields ...interface{}) error {
 		return err
 	}
 
-	L := parent.L
+	L := parent.l
 	parent.Push()
 	defer L.Pop(1)
 
@@ -277,8 +274,8 @@ func (lo *LuaObject) Set(a interface{}, subfields ...interface{}) error {
 func (lo *LuaObject) Setv(src *LuaObject, keys ...string) error {
 	// TODO: Rename? This function seems to be too specialized, is it worth
 	// keeping at all?
-	L := lo.L
-	if L != src.L {
+	L := lo.l
+	if L != src.l {
 		return ErrLuaObjectUnsharedState
 	}
 	lo.Push()
@@ -304,7 +301,7 @@ func (lo *LuaObject) Setv(src *LuaObject, keys ...string) error {
 	}
 
 	src.Push()
-	defer src.L.Pop(1)
+	defer src.l.Pop(1)
 	srcIdx := L.GetTop()
 	var get func(int, string)
 	if L.IsTable(srcIdx) {
@@ -348,7 +345,7 @@ func (ti *LuaTableIter) Error() error {
 
 // Iter creates a Lua iterator.
 func (lo *LuaObject) Iter() (*LuaTableIter, error) {
-	L := lo.L
+	L := lo.l
 	lo.Push()
 	defer L.Pop(1)
 	if L.IsTable(-1) {
@@ -379,7 +376,7 @@ func (ti *LuaTableIter) Next(key, value interface{}) bool {
 		ti.err = errors.New("empty iterator")
 		return false
 	}
-	L := ti.lo.L
+	L := ti.lo.l
 
 	if ti.iterRef == lua.LUA_NOREF {
 		// Must be a table. This requires the Iter() function to set

@@ -452,7 +452,7 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 					L.PushString(v.Error())
 				case *LuaObject:
 					// TODO: Move out of 'proxify' condition? Check if satisfies interface?
-					if v.L == L {
+					if v.l == L {
 						v.Push()
 					} else {
 						// TODO: What shall we do when LuaObject state is not the current
