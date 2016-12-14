@@ -2,10 +2,11 @@ package luar
 
 // Metamethods.
 
-// TODO: Error check for metamethods? (index, newindex, etc.). A few solutions:
-// - Return zero value / nil.
-// - Return {result, errormsg}: result is nil on failure. This is Lua convention.
-// - RaiseError. (Current implementation.)
+// Errors in metamethod will yield a call to RaiseError.
+// It is not possible to return an error / bool / message to the caller when
+// metamethods are called via Lua operators (e.g. __newindex).
+
+// TODO: Replicate Go/Lua error messages in RaiseError.
 
 import (
 	"fmt"
@@ -25,10 +26,9 @@ func channel__index(L *lua.State) int {
 			val, ok := v.Recv()
 			if ok {
 				GoToLuaProxy(L, val)
-			} else {
-				L.PushNil()
+				return 1
 			}
-			return 1
+			return 0
 		}
 		L.PushGoFunction(f)
 	case "send":
@@ -124,8 +124,7 @@ func map__ipairs(L *lua.State) int {
 	iter := func(L *lua.State) int {
 		idx++
 		if _, ok := intKeys[idx]; !ok {
-			L.PushNil()
-			return 1
+			return 0
 		}
 		GoToLuaProxy(L, idx)
 		val := v.MapIndex(intKeys[idx])
@@ -162,9 +161,7 @@ func map__pairs(L *lua.State) int {
 	iter := func(L *lua.State) int {
 		idx++
 		if idx == n {
-			// TODO: Push nothing?
-			L.PushNil()
-			return 1
+			return 0
 		}
 		GoToLuaProxy(L, keys[idx])
 		val := v.MapIndex(keys[idx])
@@ -407,8 +404,7 @@ func slice__ipairs(L *lua.State) int {
 	iter := func(L *lua.State) int {
 		idx++
 		if idx == n {
-			L.PushNil()
-			return 1
+			return 0
 		}
 		GoToLuaProxy(L, idx+1) // report as 1-based index
 		val := v.Index(idx)
@@ -504,8 +500,7 @@ func string__ipairs(L *lua.State) int {
 	iter := func(L *lua.State) int {
 		idx++
 		if idx == n {
-			L.PushNil()
-			return 1
+			return 0
 		}
 		GoToLuaProxy(L, idx+1) // report as 1-based index
 		GoToLuaProxy(L, string(r[idx]))

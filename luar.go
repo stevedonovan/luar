@@ -451,7 +451,8 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 				case error:
 					L.PushString(v.Error())
 				case *LuaObject:
-					// TODO: Move out of 'proxify' condition? Check if satisfies interface?
+					// TODO: Move out of 'proxify' condition? LuaObject is meant to be
+					// manipulated from the Go side, it is not useful in Lua.
 					if v.l == L {
 						v.Push()
 					} else {

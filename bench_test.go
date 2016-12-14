@@ -1,6 +1,6 @@
 package luar
 
-// TODO: Optimize.
+// TODO: v2 seems to be somewhat slower than v1. Profile and optimize.
 
 import (
 	"fmt"
