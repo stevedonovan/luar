@@ -131,20 +131,34 @@ func ProxyPairs(L *lua.State) int {
 
 // ProxyType pushes the proxy type on the stack.
 //
+// It behaves like Lua's "type" except for proxies for which it returns
+// 'table<TYPE>', 'string<TYPE>' or 'number<TYPE>' with TYPE being the go type.
+//
 // Argument: proxy
 //
 // Returns: type (string)
 func ProxyType(L *lua.State) int {
 	if !isValueProxy(L, 1) {
-		L.PushNil()
+		L.PushString(L.LTypename(1))
 		return 1
 	}
 	v, _ := valueOfProxy(L, 1)
-	if v.Interface() == nil {
-		L.PushNil()
-		return 1
+
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
 	}
-	GoToLuaProxy(L, v.Type())
+
+	prefix := "userdata"
+	switch unsizedKind(v) {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.Struct:
+		prefix = "table"
+	case reflect.String:
+		prefix = "string"
+	case reflect.Uint64, reflect.Int64, reflect.Float64, reflect.Complex128:
+		prefix = "number"
+	}
+
+	L.PushString(prefix + "<" + v.Type().String() + ">")
 	return 1
 }
 

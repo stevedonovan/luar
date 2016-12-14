@@ -1135,7 +1135,7 @@ func TestProxyArray(t *testing.T) {
 
 	tdt := []luaTestData{
 		{`#a`, `2`},
-		{`type(a)`, `'userdata'`},
+		{`type(a)`, `'table<[2]int>'`},
 		{`a[1]`, `17`},
 		{`a[2]`, `18`},
 	}
@@ -1399,8 +1399,8 @@ func TestProxyStruct(t *testing.T) {
 		{`it.GetName()`, `'Bob'`},
 		{`GetName(it)`, `'Bob'`},
 		{`GetName(t)`, `'Bob'`},
-		{`luar.type(t).String()`, `'*luar.person'`},
-		{`luar.type(it).String()`, `'*luar.person'`},
+		{`type(t)`, `'table<luar.person>'`},
+		{`type(it)`, `'table<luar.person>'`},
 	})
 }
 

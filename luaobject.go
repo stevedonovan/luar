@@ -9,7 +9,7 @@ import (
 
 // LuaObject encapsulates a Lua object like a table or a function.
 //
-// We do not make the type distinction since metatable can make tables callable
+// We do not make the type distinction since metatables can make tables callable
 // and functions indexable.
 type LuaObject struct {
 	// TODO: Unexport?

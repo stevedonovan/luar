@@ -121,7 +121,6 @@ func (v *visitor) push(val reflect.Value) bool {
 // It populates the 'luar' table with some helper functions/values:
 //
 //   method: ProxyMethod
-//   type: ProxyType
 //   unproxify: Unproxify
 //
 //   chan: MakeChan
@@ -131,8 +130,11 @@ func (v *visitor) push(val reflect.Value) bool {
 //
 //   null: Null
 //
-// It replaces the pairs/ipairs functions so that __pairs/__ipairs can be used,
-// Lua 5.2 style. It allows for looping over Go composite types and strings.
+// It replaces the 'pairs'/'ipairs' functions with ProxyPairs/ProxyIpairs
+// respectively, so that __pairs/__ipairs can be used, Lua 5.2 style. It allows
+// for looping over Go composite types and strings.
+//
+// It also replaces the 'type' function with ProxyType.
 //
 // It is not required for using the 'GoToLua' and 'LuaToGo' functions.
 func Init() *lua.State {
@@ -143,7 +145,6 @@ func Init() *lua.State {
 		"unproxify": Unproxify,
 
 		"method": ProxyMethod,
-		"type":   ProxyType, // TODO: Replace with the version from the 'proxytype' branch.
 
 		"chan":    MakeChan,
 		"complex": Complex,
@@ -156,6 +157,7 @@ func Init() *lua.State {
 	Register(L, "", Map{
 		"ipairs": ProxyIpairs,
 		"pairs":  ProxyPairs,
+		"type":   ProxyType,
 	})
 	return L
 }
