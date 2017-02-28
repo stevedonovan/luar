@@ -27,8 +27,11 @@ const (
 	cChannelMeta   = "channelMT"
 )
 
-var proxyMap = map[*valueProxy]reflect.Value{}
-var proxymu = &sync.Mutex{}
+var (
+	proxyIdCounter uintptr
+	proxyMap       = map[uintptr]*valueProxy{}
+	proxymu        sync.RWMutex
+)
 
 // commonKind returns the kind to which v1 and v2 can be converted with the
 // least information loss.
@@ -152,14 +155,16 @@ func makeValueProxy(L *lua.State, v reflect.Value, proxyMT string) {
 			flagValue()
 		}
 	}
-	L.Pop(1)
-	rawptr := L.NewUserdata(typeof((*valueProxy)(nil)).Size())
-	ptr := (*valueProxy)(rawptr)
-	ptr.v = v
-	ptr.t = v.Type()
+
 	proxymu.Lock()
-	proxyMap[ptr] = v
+	id := proxyIdCounter
+	proxyIdCounter++
+	proxyMap[id] = &valueProxy{ v: v, t: v.Type() }
 	proxymu.Unlock()
+
+	L.Pop(1)
+	rawptr := L.NewUserdata(reflect.TypeOf(id).Size())
+	*(*uintptr)(rawptr) = id
 	L.LGetMetaTable(proxyMT)
 	L.SetMetaTable(-2)
 }
@@ -243,8 +248,17 @@ func unsizedKind(v reflect.Value) reflect.Kind {
 }
 
 func valueOfProxy(L *lua.State, idx int) (reflect.Value, reflect.Type) {
-	proxy := (*valueProxy)(L.ToUserdata(idx))
-	return proxy.v, proxy.t
+	proxyId := *(*uintptr)(L.ToUserdata(idx))
+
+	proxymu.RLock()
+	val, ok := proxyMap[proxyId]
+	proxymu.RUnlock()
+
+	if !ok {
+		L.RaiseError(fmt.Sprintf("No value proxy in arg #%d", idx))
+	}
+
+	return val.v, val.t
 }
 
 func valueToComplex(L *lua.State, v reflect.Value) complex128 {

@@ -331,9 +331,9 @@ func proxy__eq(L *lua.State) int {
 }
 
 func proxy__gc(L *lua.State) int {
-	proxy := (*valueProxy)(L.ToUserdata(1))
+	proxyId := *(*uintptr)(L.ToUserdata(1))
 	proxymu.Lock()
-	delete(proxyMap, proxy)
+	delete(proxyMap, proxyId)
 	proxymu.Unlock()
 	return 0
 }
