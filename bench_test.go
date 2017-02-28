@@ -1,8 +1,9 @@
 package luar
 
+// TODO: v2 seems to be somewhat slower than v1. Profile and optimize.
+
 import (
 	"fmt"
-	"reflect"
 	"testing"
 )
 
@@ -15,7 +16,7 @@ func BenchmarkLuaToGoSliceInt(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_ = LuaToGo(L, reflect.TypeOf(output), -1)
+		LuaToGo(L, -1, &output)
 	}
 }
 
@@ -28,7 +29,7 @@ func BenchmarkLuaToGoSliceMap(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_ = LuaToGo(L, reflect.TypeOf(output), -1)
+		LuaToGo(L, -1, &output)
 	}
 }
 
@@ -44,7 +45,7 @@ func BenchmarkLuaToGoSliceMapUnique(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_ = LuaToGo(L, reflect.TypeOf(output), -1)
+		LuaToGo(L, -1, &output)
 	}
 }
 
@@ -57,7 +58,7 @@ func BenchmarkLuaToGoMapInt(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_ = LuaToGo(L, reflect.TypeOf(output), -1)
+		LuaToGo(L, -1, &output)
 	}
 }
 
@@ -70,7 +71,7 @@ func BenchmarkLuaToGoMapSlice(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_ = LuaToGo(L, reflect.TypeOf(output), -1)
+		LuaToGo(L, -1, &output)
 	}
 }
 
@@ -86,7 +87,7 @@ func BenchmarkLuaToGoMapSliceUnique(b *testing.B) {
 	L.GetGlobal("t")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_ = LuaToGo(L, reflect.TypeOf(output), -1)
+		LuaToGo(L, -1, &output)
 	}
 }
 
@@ -100,7 +101,7 @@ func BenchmarkGoToLuaSliceInt(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -116,7 +117,7 @@ func BenchmarkGoToLuaSliceSlice(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -131,7 +132,7 @@ func BenchmarkGoToLuaSliceSliceUnique(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -146,7 +147,7 @@ func BenchmarkGoToLuaMapInt(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -162,7 +163,7 @@ func BenchmarkGoToLuaMapSlice(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }
@@ -177,7 +178,7 @@ func BenchmarkGoToLuaMapSliceUnique(b *testing.B) {
 	}
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GoToLua(L, nil, reflect.ValueOf(input), true)
+		GoToLua(L, input)
 		L.SetTop(0)
 	}
 }

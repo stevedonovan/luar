@@ -7,7 +7,6 @@ package luar_test
 import (
 	"fmt"
 	"log"
-	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -19,10 +18,10 @@ import (
 func Example() {
 	const test = `
 for i = 1, 3 do
-		Print(msg, i)
+		print(msg, i)
 end
-Print(user)
-Print(user.Name, user.Age)
+print(user)
+print(user.Name, user.Age)
 `
 
 	type person struct {
@@ -37,7 +36,7 @@ Print(user.Name, user.Age)
 
 	luar.Register(L, "", luar.Map{
 		// Go functions may be registered directly.
-		"Print": fmt.Println,
+		"print": fmt.Println,
 		// Constants can be registered.
 		"msg": "foo",
 		// And other values as well.
@@ -53,11 +52,11 @@ Print(user.Name, user.Age)
 	// Dolly 46
 }
 
+// Pointers to structs and structs within pointers are automatically dereferenced.
 func Example_pointers() {
 	const test = `
--- Pointers to structs and structs within pointers are automatically dereferenced.
 local t = newRef()
-Print(t.Index, t.Number, t.Title)
+print(t.Index, t.Number, t.Title)
 `
 
 	type Ref struct {
@@ -78,7 +77,7 @@ Print(t.Index, t.Number, t.Title)
 	defer L.Close()
 
 	luar.Register(L, "", luar.Map{
-		"Print":  fmt.Println,
+		"print":  fmt.Println,
 		"newRef": newRef,
 	})
 
@@ -87,11 +86,11 @@ Print(t.Index, t.Number, t.Title)
 	// 17 10 foo
 }
 
-// Slices must be looped with 'ipairs'.
+// Slices must be looped over with 'ipairs'.
 func Example_slices() {
 	const test = `
 for i, v in ipairs(names) do
-	 Print(i, v)
+	 print(i, v)
 end
 `
 
@@ -101,7 +100,7 @@ end
 	names := []string{"alfred", "alice", "bob", "frodo"}
 
 	luar.Register(L, "", luar.Map{
-		"Print": fmt.Println,
+		"print": fmt.Println,
 		"names": names,
 	})
 
@@ -113,131 +112,36 @@ end
 	// 4 frodo
 }
 
-// TODO: If ExampleCopy* get removed, remove this as well.
-const config = `return {
-	baggins = true,
-	age = 24,
-	name = 'dumbo' ,
-	marked = {1,2},
-	options = {
-		leave = true,
-		cancel = 'always',
-		tags = {strong=true, foolish=true},
-	}
-}`
-
-// Read configuration in Lua format.
-//
-// WARNING: Deprecated.
-func ExampleCopyTableToMap() {
-	L := luar.Init()
-	defer L.Close()
-
-	err := L.DoString(config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// There should be a table on the Lua stack.
-	if !L.IsTable(-1) {
-		log.Fatal("no table on stack")
-	}
-
-	v := luar.CopyTableToMap(L, nil, -1)
-	// Extract table from the returned interface.
-	m := v.(map[string]interface{})
-	marked := m["marked"].([]interface{})
-	options := m["options"].(map[string]interface{})
-
-	fmt.Printf("%#v\n", m["baggins"])
-	fmt.Printf("%#v\n", m["name"])
-	fmt.Printf("%#v\n", len(marked))
-	fmt.Printf("%.1f\n", marked[0])
-	fmt.Printf("%.1f\n", marked[1])
-	fmt.Printf("%#v\n", options["leave"])
-	// Output:
-	// true
-	// "dumbo"
-	// 2
-	// 1.0
-	// 2.0
-	// true
-}
-
-// WARNING: Deprecated.
-func ExampleCopyTableToStruct() {
-	L := luar.Init()
-	defer L.Close()
-
-	err := L.DoString(config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// There should be a table on the Lua stack.
-	if !L.IsTable(-1) {
-		log.Fatal("no table on stack")
-	}
-
-	type conf struct {
-		Baggins bool   `lua:"baggins"`
-		Age     int    `lua:"age"`
-		Name    string `lua:"name"`
-		Marked  []int  `lua:"marked"`
-		Options struct {
-			Leave  bool            `lua:"leave"`
-			cancel string          // Ingored since it is unexported.
-			Tags   map[string]bool `lua:"tags"`
-		} `lua:"options"`
-	}
-
-	var s conf
-	v := luar.CopyTableToStruct(L, reflect.TypeOf(s), -1)
-	s = v.(conf)
-
-	fmt.Println(s.Baggins)
-	fmt.Println(s.Age)
-	fmt.Println(s.Name)
-	fmt.Println(s.Marked)
-	fmt.Println(s.Options.Leave)
-	fmt.Println(s.Options.Tags["foolish"], s.Options.Tags["strong"])
-	// Output:
-	// true
-	// 24
-	// dumbo
-	// [1 2]
-	// true
-	// true true
-}
-
+// Init() is not needed when no proxy is involved.
 func ExampleGoToLua() {
-	// The luar's Init function is only required for proxy use.
 	L := lua.NewState()
 	defer L.Close()
 	L.OpenLibs()
 
 	input := "Hello world!"
-	luar.GoToLua(L, nil, reflect.ValueOf(input), true)
+	luar.GoToLua(L, input)
 	L.SetGlobal("input")
 
-	luar.GoToLua(L, nil, reflect.ValueOf(fmt.Println), true)
-	L.SetGlobal("Print")
-	L.DoString("Print(input)")
+	luar.GoToLua(L, fmt.Println)
+	L.SetGlobal("print")
+	L.DoString("print(input)")
 	// Output:
 	// Hello world!
 }
 
 // This example shows how Go slices and maps are marshalled to Lua tables and
-// vice versa. This requires the Lua state to be initialized with `luar.Init()`.
+// vice versa.
 //
 // An arbitrary Go function is callable from Lua, and list-like tables become
 // slices on the Go side. The Go function returns a map, which is wrapped as a
-// proxy object. You can however then copy this to a Lua table explicitly. There
-// is also `luar.unproxify` on the Lua side.
+// proxy object. You can copy this proxy to a Lua table explicitly. There is
+// also `luar.unproxify` on the Lua side to do this.
+//
+// We initialize the state with Init() to register Unproxify() as 'luar.unproxify()'.
 func ExampleInit() {
 	const code = `
--- Lua tables auto-convert to slices.
-local res = foo {10,20,30,40}
+-- Lua tables auto-convert to slices in Go-function calls.
+local res = foo {10, 20, 30, 40}
 
 -- The result is a map-proxy.
 print(res['1'], res['2'])
@@ -277,15 +181,13 @@ end
 	// 2 900
 }
 
-func ExampleLuaObject_Callf() {
+func ExampleLuaObject_Call() {
 	L := luar.Init()
 	defer L.Close()
 
-	returns := luar.Types([]string{}) // []reflect.Type
-
 	const code = `
 function return_strings()
-    return {'one', luar.null, 'three'}
+	return 'one', luar.null, 'three'
 end`
 
 	err := L.DoString(code)
@@ -294,20 +196,21 @@ end`
 	}
 
 	fun := luar.NewLuaObjectFromName(L, "return_strings")
+	defer fun.Close()
+
 	// Using `Call` we would get a generic `[]interface{}`, which is awkward to
 	// work with. But the return type can be specified:
-	results, err := fun.Callf(returns)
+	results := []string{}
+	err = fun.Call(&results)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	strs := results[0].([]string)
-
-	fmt.Println(strs[0])
+	fmt.Println(results[0])
 	// We get an empty string corresponding to a luar.null in a table,
 	// since that's the empty 'zero' value for a string.
-	fmt.Println(strs[1])
-	fmt.Println(strs[2])
+	fmt.Println(results[1])
+	fmt.Println(results[2])
 	// Output:
 	// one
 	//
@@ -326,7 +229,7 @@ print(M.three)
 	defer L.Close()
 
 	M := luar.Map{
-		"one":   "ein",
+		"one":   "eins",
 		"two":   "zwei",
 		"three": "drei",
 	}
@@ -342,17 +245,55 @@ print(M.three)
 	}
 	// Output:
 	// 3
-	// ein
+	// eins
 	// zwei
 	// drei
 }
 
-// Another way to do parse configs: using LuaObject to manipulate the table.
+func ExampleMakeChan() {
+	L1 := luar.Init()
+	defer L1.Close()
+	L2 := luar.Init()
+	defer L2.Close()
+
+	luar.MakeChan(L1)
+	L1.SetGlobal("c")
+	L1.GetGlobal("c")
+	var c interface{}
+	err := luar.LuaToGo(L1, -1, &c)
+	L1.Pop(1)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	luar.Register(L2, "", luar.Map{"c": c})
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		err := L1.DoString(`c.send(17)`)
+		if err != nil {
+			fmt.Println(err)
+		}
+		wg.Done()
+	}()
+
+	err = L2.DoString(`return c.recv()`)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(L2.ToNumber(-1))
+	L2.Pop(1)
+	wg.Wait()
+	// Output:
+	// 17
+}
+
+// Another way to do parse configs: use a LuaObject to manipulate the table.
 func ExampleNewLuaObject() {
 	L := luar.Init()
 	defer L.Close()
 
-	// Using Lua to parse configuration files.
 	const config = `return {
 	baggins = true,
 	age = 24,
@@ -371,24 +312,41 @@ func ExampleNewLuaObject() {
 	}
 
 	lo := luar.NewLuaObject(L, -1)
+	defer lo.Close()
 	// Can get the field itself as a Lua object, and so forth.
-	opts := lo.GetObject("options")
-	marked := lo.GetObject("marked")
+	opts, _ := lo.GetObject("options")
+	marked, _ := lo.GetObject("marked")
 
-	fmt.Printf("%#v\n", lo.Get("baggins"))
-	fmt.Printf("%#v\n", lo.Get("name"))
-	fmt.Printf("%#v\n", opts.Get("leave"))
+	loPrint := func(lo *luar.LuaObject, subfields ...interface{}) {
+		var a interface{}
+		lo.Get(&a, subfields...)
+		fmt.Printf("%#v\n", a)
+	}
+	loPrinti := func(lo *luar.LuaObject, idx int64) {
+		var a interface{}
+		lo.Get(&a, idx)
+		fmt.Printf("%.1f\n", a)
+	}
+	loPrint(lo, "baggins")
+	loPrint(lo, "name")
+	loPrint(opts, "leave")
 	// Note that these Get methods understand nested fields.
-	fmt.Printf("%#v\n", lo.Get("options.leave"))
-	fmt.Printf("%#v\n", lo.Get("options.tags.strong"))
-	// Non-existent nested fields don't crash but return nil.
-	fmt.Printf("%#v\n", lo.Get("options.tags.extra.flakey"))
-	fmt.Printf("%.1f\n", marked.Geti(1))
+	loPrint(lo, "options", "leave")
+	loPrint(lo, "options", "tags", "strong")
+	// Non-existent nested fields don't panic but return nil.
+	loPrint(lo, "options", "tags", "extra", "flakey")
+	loPrinti(marked, 1)
 
-	iter := lo.Iter()
+	iter, err := lo.Iter()
+	if err != nil {
+		log.Fatal(err)
+	}
 	keys := []string{}
-	for iter.Next() {
-		keys = append(keys, iter.Key.(string))
+	for key := ""; iter.Next(&key, nil); {
+		keys = append(keys, key)
+	}
+	if iter.Error() != nil {
+		log.Fatal(iter.Error())
 	}
 	sort.Strings(keys)
 
@@ -417,7 +375,8 @@ func ExampleNewLuaObjectFromValue() {
 	L := luar.Init()
 	defer L.Close()
 
-	gsub := luar.NewLuaObjectFromName(L, "string.gsub")
+	gsub := luar.NewLuaObjectFromName(L, "string", "gsub")
+	defer gsub.Close()
 
 	// We do have to explicitly copy the map to a Lua table, because `gsub`
 	// will not handle userdata types.
@@ -425,21 +384,24 @@ func ExampleNewLuaObjectFromValue() {
 		"NAME": "Dolly",
 		"HOME": "where you belong",
 	})
-	res, err := gsub.Call("hello $NAME go $HOME", "%$(%u+)", gmap)
+	defer gmap.Close()
+
+	var res = new(string)
+	err := gsub.Call(&res, "Hello $NAME, go $HOME", "%$(%u+)", gmap)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(res)
+	fmt.Println(*res)
 	// Output:
-	// hello Dolly go where you belong
+	// Hello Dolly, go where you belong
 }
 
 func ExampleLuaTableIter_Next() {
 	const code = `
 return {
-  foo = 17,
-  bar = 18,
+	foo = 17,
+	bar = 18,
 }
 `
 
@@ -452,14 +414,17 @@ return {
 	}
 
 	lo := luar.NewLuaObject(L, -1)
+	defer lo.Close()
 
-	iter := lo.Iter()
+	iter, err := lo.Iter()
+	if err != nil {
+		log.Fatal(err)
+	}
 	keys := []string{}
 	values := map[string]float64{}
-	for iter.Next() {
-		k := iter.Key.(string)
-		keys = append(keys, k)
-		values[k] = iter.Value.(float64)
+	for key, value := "", 0.0; iter.Next(&key, &value); {
+		keys = append(keys, key)
+		values[key] = value
 	}
 	sort.Strings(keys)
 
@@ -473,9 +438,9 @@ return {
 
 func ExampleRegister_sandbox() {
 	const code = `
-    Print("foo")
-    Print(io ~= nil)
-    Print(os == nil)
+print("foo")
+print(io ~= nil)
+print(os == nil)
 `
 
 	L := luar.Init()
@@ -491,15 +456,17 @@ func ExampleRegister_sandbox() {
 	L.NewTable()
 	// "*" means "use table on top of the stack."
 	luar.Register(L, "*", luar.Map{
-		"Print": fmt.Println,
+		"print": fmt.Println,
 	})
 	env := luar.NewLuaObject(L, -1)
-	G := luar.Global(L)
+	G := luar.NewLuaObjectFromName(L, "_G")
+	defer env.Close()
+	defer G.Close()
 
 	// We can copy any Lua object from "G" to env with 'Set', e.g.:
 	//   env.Set("print", G.Get("print"))
 	// A more convenient and efficient way is to do a bulk copy with 'Setv':
-	env.Setv(G, "print", "io")
+	env.Setv(G, "type", "io", "table")
 
 	// Set up sandbox.
 	L.SetfEnv(-2)
@@ -507,54 +474,10 @@ func ExampleRegister_sandbox() {
 	// Run 'code' chunk.
 	err := L.Call(0, 0)
 	if err != nil {
-		fmt.Println("could not run", err)
+		log.Fatal(err)
 	}
 	// Output:
 	// foo
 	// true
 	// true
-}
-
-func ExampleMakeChan() {
-	L1 := luar.Init()
-	defer L1.Close()
-	L2 := luar.Init()
-	defer L2.Close()
-
-	luar.MakeChan(L1)
-	L1.SetGlobal("c")
-	L1.GetGlobal("c")
-	c := luar.LuaToGo(L1, nil, -1)
-
-	luar.Register(L2, "", luar.Map{
-		"c":     c,
-		"Print": fmt.Println,
-	})
-
-	const code1 = `
-c.send(17)
-`
-
-	const code2 = `
-v = c.recv()
-Print(v)
-`
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		err := L1.DoString(code1)
-		if err != nil {
-			fmt.Println(err)
-		}
-		wg.Done()
-	}()
-
-	err := L2.DoString(code2)
-	if err != nil {
-		fmt.Println(err)
-	}
-	wg.Wait()
-	// Output:
-	// 17
 }

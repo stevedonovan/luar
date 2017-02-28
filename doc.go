@@ -68,8 +68,8 @@ slice. The elements must be convertible to the slice element type.
 
 - cap: The capacity of the slice.
 
-- sub(i, j integer) sliceProxy: Return the sub-slice that ranges from 'i' to 'j'
-included. This matches Lua's behaviour, but not Go's.
+- slice(i, j integer) sliceProxy: Return the sub-slice that ranges from 'i' to 'j'
+excluded, starting from 1.
 
 
 Strings
@@ -77,10 +77,13 @@ Strings
 String proxies can be browsed rune by rune with the pairs/ipairs functions.
 These runes are encoded as strings in Lua.
 
+Indexing a string proxy (starting from 1) will return the corresponding byte as
+a Lua string.
+
 String proxies can be manipulated with the following method:
 
-- sub(i, j integer) sliceProxy: Return the sub-string that ranges from 'i' to
-'j' included. This matches Lua's behaviour, but not Go's.
+- slice(i, j integer) sliceProxy: Return the sub-string that ranges from 'i' to 'j'
+excluded, starting from 1.
 
 */
 package luar
