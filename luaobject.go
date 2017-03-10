@@ -17,7 +17,7 @@ type LuaObject struct {
 }
 
 var (
-	ErrLuaObjectCallResults   = errors.New("results must be a pointer to pointer/slice/struct")
+	ErrLuaObjectCallResults   = errors.New("results must be a pointer to pointer/slice/struct/interface")
 	ErrLuaObjectCallable      = errors.New("LuaObject must be callable")
 	ErrLuaObjectIndexable     = errors.New("not indexable")
 	ErrLuaObjectUnsharedState = errors.New("LuaObjects must share the same state")
@@ -99,13 +99,18 @@ func (lo *LuaObject) Call(results interface{}, args ...interface{}) error {
 	res := resptr.Elem()
 
 	switch res.Kind() {
-	case reflect.Ptr:
+	case reflect.Ptr, reflect.Interface:
 		err := L.Call(len(args), 1)
 		defer L.Pop(1)
 		if err != nil {
 			return err
 		}
-		return LuaToGo(L, -1, res.Interface())
+
+		if res.Kind() == reflect.Ptr {
+			return LuaToGo(L, -1, res.Interface())
+		} else {
+			return LuaToGo(L, -1, resptr.Interface())
+		}
 
 	case reflect.Slice:
 		residx := L.GetTop() - len(args)
