@@ -655,7 +655,7 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 //
 // The Go value must be a non-nil pointer.
 //
-// Conversions to string and numbers are straightforward.
+// Conversions to strings and numbers are straightforward.
 //
 // Lua 'nil' is converted to the zero value of the specified Go value.
 //
@@ -765,7 +765,7 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		// Wrap the userdata into a LuaObject.
 		v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
 	case lua.LUA_TTABLE:
-		// TODO: Check what happens if visited is not of the right type.
+		// TODO: Check what happens if 'visited' is not of the right type.
 		ptr := L.ToPointer(idx)
 		if val, ok := visited[ptr]; ok {
 			if v.Kind() == reflect.Struct {

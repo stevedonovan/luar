@@ -56,7 +56,7 @@ func NewLuaObjectFromValue(L *lua.State, val interface{}) *LuaObject {
 //
 // - If a pointer, then only the first result is stored to that pointer.
 //
-// - If a struct with 'n' fields, then the first n results are stored in the field.
+// - If a struct with 'n' exported fields, then the first 'n' results are stored in the first 'n' exported fields.
 //
 // - If a slice, then all the results are stored in the slice. The slice is re-allocated if necessary.
 //
