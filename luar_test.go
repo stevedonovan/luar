@@ -894,6 +894,43 @@ func TestLuaObjectIterMT(t *testing.T) {
 	checkStack(t, L)
 }
 
+func TestLuaToGoFunction(t *testing.T) {
+	L := Init()
+	defer L.Close()
+
+	mustDoString(t, L, `
+function foo()
+	return 17
+end
+`)
+
+	var a interface{}
+	L.GetGlobal("foo")
+	err := LuaToGo(L, -1, &a)
+	if err != nil {
+		t.Error(err)
+	}
+	lo, ok := a.(*LuaObject)
+	if !ok {
+		t.Error("not a LuaObject")
+	}
+	result := new(int)
+	lo.Call(&result)
+	if *result != 17 {
+		t.Errorf("got %v, want 17", *result)
+	}
+
+	lo2 := NewLuaObjectFromName(L, "_G")
+	err = LuaToGo(L, -1, &lo2)
+	if err != nil {
+		t.Error(err)
+	}
+	lo2.Call(&result)
+	if *result != 17 {
+		t.Errorf("got %v, want 17", *result)
+	}
+}
+
 func TestLuaToGoPointers(t *testing.T) {
 	L := Init()
 	defer L.Close()

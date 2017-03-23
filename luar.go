@@ -806,6 +806,14 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		default:
 			return ConvError{From: luaDesc(L, idx), To: v.Type()}
 		}
+	case lua.LUA_TFUNCTION:
+		if kind == reflect.Interface {
+			v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
+		} else if vp.Type() == reflect.TypeOf(&LuaObject{}) {
+			vp.Set(reflect.ValueOf(NewLuaObject(L, idx)))
+		} else {
+			return ConvError{From: luaDesc(L, idx), To: v.Type()}
+		}
 	default:
 		return ConvError{From: luaDesc(L, idx), To: v.Type()}
 	}
