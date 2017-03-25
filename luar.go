@@ -155,10 +155,11 @@ func Init() *lua.State {
 		"null": Null,
 	})
 	Register(L, "", Map{
-		"ipairs": ProxyIpairs,
-		"pairs":  ProxyPairs,
-		"type":   ProxyType,
+		"pairs": ProxyPairs,
+		"type":  ProxyType,
 	})
+	// 'ipairs' needs a special case for performance reasons.
+	RegProxyIpairs(L, "", "ipairs")
 	return L
 }
 
