@@ -93,10 +93,17 @@ func (v *visitor) close() {
 // Mark value on top of the stack as visited using the registry index.
 func (v *visitor) mark(val reflect.Value) {
 	ptr := val.Pointer()
+	if ptr == 0 {
+		// We do not mark uninitialized 'val' as this is meaningless and this would
+		// bind all uninitialized values to the same mark.
+		return
+	}
+
 	v.L.RawGeti(lua.LUA_REGISTRYINDEX, v.index)
 	// Copy value on top.
 	v.L.PushValue(-2)
 	// Set value to table.
+	// TODO: Handle overflow.
 	v.L.RawSeti(-2, int(ptr))
 	v.L.Pop(1)
 }
