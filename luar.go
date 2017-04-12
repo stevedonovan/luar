@@ -773,15 +773,30 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 		// Wrap the userdata into a LuaObject.
 		v.Set(reflect.ValueOf(NewLuaObject(L, idx)))
 	case lua.LUA_TTABLE:
-		// TODO: Check what happens if 'visited' is not of the right type.
+		// If several Lua objects point to the same value while they map to Go
+		// values of different types, 'visited' should be skipped. Since such a
+		// condition is hard to infere, we simply check if it is convertible.
+		//
+		// Lua source:
+		// t = {
+		//   names = {"foo", "bar"},
+		//   altnames = names,
+		// }
+		//
+		// Go target:
+		// t := struct {
+		//   names: []string
+		//   altnames: map[string]string
+		// }
 		ptr := L.ToPointer(idx)
 		if val, ok := visited[ptr]; ok {
-			if v.Kind() == reflect.Struct {
+			if v.Kind() == reflect.Struct && val.Type().ConvertibleTo(vp.Type()) {
 				vp.Set(val)
-			} else {
+				return nil
+			} else if val.Type().ConvertibleTo(v.Type()) {
 				v.Set(val)
+				return nil
 			}
-			return nil
 		}
 
 		switch kind {
