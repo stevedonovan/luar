@@ -1418,6 +1418,7 @@ func TestProxyStruct(t *testing.T) {
 		"NewPerson": newPerson,
 		"NewName":   newName,
 		"GetName":   getName,
+		"contact":   &Contact{person{"Charles", 27}},
 	})
 
 	mustDoString(t, L, `t = NewPerson("Alice", 17)`)
@@ -1438,6 +1439,12 @@ func TestProxyStruct(t *testing.T) {
 		{`GetName(t)`, `'Bob'`},
 		{`type(t)`, `'table<luar.person>'`},
 		{`type(it)`, `'table<luar.person>'`},
+	})
+
+	mustDoString(t, L, `contact.Person.Name = "Darwin"`)
+	runLuaTest(t, L, []luaTestData{
+		{`type(contact.Person)`, `'table<luar.person>'`},
+		{`contact.Person.GetName()`, `'Darwin'`},
 	})
 }
 
@@ -1566,6 +1573,10 @@ func TestSlice(t *testing.T) {
 		t.Errorf("got %#v, want %#v from Lua->Go conversion of `%v`", i, want3, input)
 	}
 
+}
+
+type Contact struct {
+	Person person
 }
 
 type person struct {

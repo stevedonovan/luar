@@ -535,9 +535,11 @@ func struct__index(L *lua.State) int {
 		// No such exported field, try for method.
 		pushGoMethod(L, name, vp)
 	} else {
-		if isPointerToPrimitive(field) {
-			// TODO: Why dereferencing the pointer?
-			GoToLuaProxy(L, field.Elem())
+		// Proxify value. If array or struct, they should be addressable and thus
+		// proxifiable. We pass the address of the field so that modifying the
+		// result in Lua will reflect on the Go value.
+		if (field.Kind() == reflect.Struct || field.Kind() == reflect.Array) && field.CanAddr() {
+			GoToLuaProxy(L, field.Addr())
 		} else {
 			GoToLuaProxy(L, field)
 		}

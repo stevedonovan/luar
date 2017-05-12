@@ -870,7 +870,7 @@ func isNewType(t reflect.Type) bool {
 	return pt != t
 }
 
-// Register makes a number of Go values available in Lua code.
+// Register makes a number of Go values available in Lua code as proxies.
 // 'values' is a map of strings to Go values.
 //
 // - If table is non-nil, then create or reuse a global table of that name and
@@ -879,6 +879,8 @@ func isNewType(t reflect.Type) bool {
 // - If table is '' then put the values in the global table (_G).
 //
 // - If table is '*' then assume that the table is already on the stack.
+//
+// See GoToLuaProxy's documentation.
 func Register(L *lua.State, table string, values Map) {
 	pop := true
 	if table == "*" {
