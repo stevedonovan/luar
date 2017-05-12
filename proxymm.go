@@ -84,6 +84,8 @@ func map__index(L *lua.State) int {
 		key = key.Elem()
 		val := v.MapIndex(key)
 		if val.IsValid() {
+			// As opposed to slices and structs, no need to take the address of
+			// structs and arrays as map values are unaddressable.
 			GoToLuaProxy(L, val)
 			return 1
 		}
@@ -356,7 +358,13 @@ func slice__index(L *lua.State) int {
 			L.RaiseError("slice/array get: index out of range")
 		}
 		v := v.Index(idx - 1)
-		GoToLuaProxy(L, v)
+		// See struct__index for why we take the address of struct and arrays.
+		if (v.Kind() == reflect.Struct || v.Kind() == reflect.Array) && v.CanAddr() {
+			GoToLuaProxy(L, v.Addr())
+		} else {
+			GoToLuaProxy(L, v)
+		}
+
 	} else if L.IsString(2) {
 		name := L.ToString(2)
 		if v.Kind() == reflect.Array {
