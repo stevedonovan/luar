@@ -240,7 +240,7 @@ func TestComplex(t *testing.T) {
 		"a": a,
 	})
 
-	tdt := []luaTestData{
+	runLuaTest(t, L, []luaTestData{
 		{`c`, `luar.complex(2, 3)`},
 		{`{c.real, c.imag}`, `{2, 3}`},
 		{`c+c`, `luar.complex(4, 6)`},
@@ -249,9 +249,7 @@ func TestComplex(t *testing.T) {
 		{`2*c`, `luar.complex(4, 6)`},
 		// {`c^2`, `luar.complex(4, 6)`},
 		{`c / a`, `luar.complex(0.0625, 0.09375)`},
-	}
-
-	runLuaTest(t, L, tdt)
+	})
 }
 
 type list struct {
@@ -519,6 +517,21 @@ gc()`)
 	})
 }
 
+type newArray [2]int
+
+func (a newArray) Split() (int, int) {
+	return a[0], a[1]
+}
+
+type newStruct struct {
+	a int
+	b int
+}
+
+func (s newStruct) Split() (int, int) {
+	return s.a, s.b
+}
+
 func TestGoToLuaFunction(t *testing.T) {
 	L := Init()
 	defer L.Close()
@@ -562,6 +575,20 @@ func TestGoToLuaFunction(t *testing.T) {
 		return person{Name: name}
 	}
 
+	pair2array := func(a, b int) newArray {
+		return newArray{a, b}
+	}
+	array2pair := func(a newArray) (int, int) {
+		return a.Split()
+	}
+
+	pair2struct := func(a, b int) newStruct {
+		return newStruct{a, b}
+	}
+	struct2pair := func(a newStruct) (int, int) {
+		return a.Split()
+	}
+
 	Register(L, "", Map{
 		"multiresult":     multiresult,
 		"sum":             sum,
@@ -570,6 +597,10 @@ func TestGoToLuaFunction(t *testing.T) {
 		"IsNilInterface":  IsNilInterface,
 		"IsNilPointer":    IsNilPointer,
 		"newDirectPerson": newDirectPerson,
+		"pair2array":      pair2array,
+		"array2pair":      array2pair,
+		"pair2struct":     pair2struct,
+		"struct2pair":     struct2pair,
 	})
 
 	runLuaTest(t, L, []luaTestData{
@@ -580,7 +611,10 @@ func TestGoToLuaFunction(t *testing.T) {
 		{`squares{10, 20}['1']`, `400`}, // Proxy return value.
 		{`IsNilInterface(nil)`, `true`},
 		{`IsNilPointer(nil)`, `true`},
+		{`type(newDirectPerson("Charly"))`, `"table<luar.person>"`},
 		{`newDirectPerson("Charly").GetName()`, `"Charly"`},
+		{`{array2pair(pair2array(17, 18))}`, `{17, 18}`},
+		{`{struct2pair(pair2struct(17, 18))}`, `{17, 18}`},
 	})
 }
 
@@ -1163,33 +1197,63 @@ func TestProxy(t *testing.T) {
 	})
 }
 
+// Different kinds of proxies for arrays:
+// - settable array
+// - non-settable array of default type
+// - non-settable array of user-defined type
 func TestProxyArray(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
-	a := [2]int{17, 18}
-	Register(L, "", Map{"a": &a})
+	settable := [2]int{14, 15}
+	defaultType := [2]int{17, 18}
+	newType := newArray{20, 21}
+	originalDefault := defaultType
+	originalNew := newType
 
-	tdt := []luaTestData{
-		{`#a`, `2`},
-		{`type(a)`, `'table<[2]int>'`},
-		{`a[1]`, `17`},
-		{`a[2]`, `18`},
-	}
-
-	runLuaTest(t, L, tdt)
-
-	mustDoString(t, L, `a1 = {ipairs(a)(a, 0)}; a1 = a1[2]`)
-	runLuaTest(t, L, []luaTestData{{`a1`, `17`}})
-
-	mustDoString(t, L, `a[1] = 170`)
-	runGoTest(t, L, []goTestData{
-		{`a`, &[2]int{170, 18}, ""},
+	Register(L, "", Map{
+		"settable":    &settable,
+		"defaultType": defaultType,
+		"newType":     newType,
 	})
 
-	// 'ipairs' on regular tables.
+	runLuaTest(t, L, []luaTestData{
+		{`#settable`, `2`},
+		{`#defaultType`, `2`},
+		{`#newType`, `2`},
+		{`type(settable)`, `'table<[2]int>'`},
+		{`type(defaultType)`, `'table'`},
+		{`type(newType)`, `'table<luar.newArray>'`},
+		{`settable[1]`, `14`},
+		{`settable[2]`, `15`},
+		{`defaultType[1]`, `17`},
+		{`defaultType[2]`, `18`},
+		{`newType[1]`, `20`},
+		{`newType[2]`, `21`},
+	})
+
+	// Proxy-aware 'ipairs' on regular tables.
 	mustDoString(t, L, `t = {37}; t1 = {ipairs(t)(t, 0)}; t1 = t1[2]`)
 	runLuaTest(t, L, []luaTestData{{`t1`, `37`}})
+
+	// Proxy-aware 'ipairs' on array proxy.
+	mustDoString(t, L, `a1 = {ipairs(settable)(settable, 0)}; a1 = a1[2]`)
+	runLuaTest(t, L, []luaTestData{{`a1`, `14`}})
+
+	mustDoString(t, L, `settable[1] = 140`)
+	runGoTest(t, L, []goTestData{
+		{`settable`, &[2]int{140, 15}, ""},
+	})
+
+	// Since defaultType and newType are not settable, modifying their value in
+	// Lua must not change it in Go.
+	mustDoString(t, L, `defaultType[1] = 170; newType[1] = 200`)
+	if defaultType != originalDefault {
+		t.Errorf("got %v, want %v", defaultType, originalDefault)
+	}
+	if newType != originalNew {
+		t.Errorf("got %v, want %v", newType, originalNew)
+	}
 }
 
 type myIntA int
@@ -1410,14 +1474,24 @@ end
 
 // Get and set public fields in struct proxies.
 // Test interface conversion and calls.
+// Proxies of non-settable structs must not modify the Go value.
 func TestProxyStruct(t *testing.T) {
 	L := Init()
 	defer L.Close()
 
+	contact := Contact{person{"Charles", 27}}
+	contactCopy := Contact{person{"David", 31}}
+
+	city := "dummycity"
+	address := Address{City: &city}
+
 	Register(L, "", Map{
-		"NewPerson": newPerson,
-		"NewName":   newName,
-		"GetName":   getName,
+		"NewPerson":   newPerson,
+		"NewName":     newName,
+		"GetName":     getName,
+		"contact":     &contact,
+		"contactCopy": contactCopy,
+		"address":     address,
 	})
 
 	mustDoString(t, L, `t = NewPerson("Alice", 17)`)
@@ -1438,6 +1512,32 @@ func TestProxyStruct(t *testing.T) {
 		{`GetName(t)`, `'Bob'`},
 		{`type(t)`, `'table<luar.person>'`},
 		{`type(it)`, `'table<luar.person>'`},
+	})
+
+	want := "Chuck"
+	mustDoString(t, L, `contact.Person.Name = "`+want+`"`)
+	runLuaTest(t, L, []luaTestData{
+		{`type(contact.Person)`, `'table<luar.person>'`},
+		{`contact.Person.GetName()`, `'` + want + `'`},
+	})
+	if contact.Person.Name != want {
+		t.Errorf("got %v, want %v", contact.Person.Name, want)
+	}
+
+	wantCopy := "Dave"
+	originalCopy := contactCopy.Person.Name
+	mustDoString(t, L, `contactCopy.Person.Name = "`+wantCopy+`"`)
+	runLuaTest(t, L, []luaTestData{
+		{`type(contactCopy.Person)`, `'table<luar.person>'`},
+		{`contactCopy.Person.GetName()`, `'` + wantCopy + `'`},
+	})
+	if contactCopy.Person.Name != originalCopy {
+		t.Errorf("got %v, want %v", contactCopy.Person.Name, originalCopy)
+	}
+
+	mustDoString(t, L, `address.City = "newCity"`)
+	runLuaTest(t, L, []luaTestData{
+		{`address.City`, `'newCity'`},
 	})
 }
 
@@ -1565,7 +1665,14 @@ func TestSlice(t *testing.T) {
 	if !reflect.DeepEqual(i, want3) {
 		t.Errorf("got %#v, want %#v from Lua->Go conversion of `%v`", i, want3, input)
 	}
+}
 
+type Contact struct {
+	Person person
+}
+
+type Address struct {
+	City *string
 }
 
 type person struct {
@@ -1583,11 +1690,16 @@ func TestStruct(t *testing.T) {
 	defer L.Close()
 
 	want := person{Name: "foo", Age: 17}
-	Register(L, "", Map{"a": want})
-	runLuaTest(t, L, []luaTestData{{`a`, `{Name='foo', Age=17}`}})
+	GoToLua(L, want)
+	L.SetGlobal("a")
+	runLuaTest(t, L, []luaTestData{
+		{`type(a)`, `"table"`},
+		{`a`, `{Name='foo', Age=17}`},
+	})
 
 	wantTags := personWithTags{Name: "foo", Age: 17}
-	Register(L, "", Map{"a": want, "atags": wantTags})
+	GoToLua(L, wantTags)
+	L.SetGlobal("atags")
 	runLuaTest(t, L, []luaTestData{{`atags`, `{name='foo', year=17}`}})
 	runGoTest(t, L, []goTestData{{`atags`, wantTags, ""}})
 

@@ -357,6 +357,7 @@ func slice__index(L *lua.State) int {
 		}
 		v := v.Index(idx - 1)
 		GoToLuaProxy(L, v)
+
 	} else if L.IsString(2) {
 		name := L.ToString(2)
 		if v.Kind() == reflect.Array {
@@ -535,12 +536,7 @@ func struct__index(L *lua.State) int {
 		// No such exported field, try for method.
 		pushGoMethod(L, name, vp)
 	} else {
-		if isPointerToPrimitive(field) {
-			// TODO: Why dereferencing the pointer?
-			GoToLuaProxy(L, field.Elem())
-		} else {
-			GoToLuaProxy(L, field)
-		}
+		GoToLuaProxy(L, field)
 	}
 	return 1
 }
@@ -558,14 +554,8 @@ func struct__newindex(L *lua.State) int {
 	val := reflect.New(field.Type())
 	err := LuaToGo(L, 3, val.Interface())
 	if err != nil {
-		L.RaiseError(fmt.Sprintf("struct field %v requires %v value type", name, field.Type()))
+		L.RaiseError(fmt.Sprintf("struct field %v requires %v value type, error with target: %v", name, field.Type(), err))
 	}
-	val = val.Elem()
-	if isPointerToPrimitive(field) {
-		// TODO: Why dereferencing the pointer?
-		field.Elem().Set(val)
-	} else {
-		field.Set(val)
-	}
+	field.Set(val.Elem())
 	return 0
 }

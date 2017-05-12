@@ -313,15 +313,6 @@ func goToLuaFunction(L *lua.State, v reflect.Value) lua.LuaGoFunction {
 		}
 		results := callGoFunction(L, v, args)
 		for _, val := range results {
-			if val.Kind() == reflect.Struct {
-				// If the function returns a struct (and not a pointer to a struct),
-				// calling GoToLua directly will convert it to a table, making the
-				// mathods inaccessible. We work around that issue by forcibly passing a
-				// pointer to a struct.
-				valp := reflect.New(val.Type())
-				valp.Elem().Set(val)
-				val = valp
-			}
 			GoToLuaProxy(L, val)
 		}
 		return len(results)
@@ -343,12 +334,29 @@ func GoToLua(L *lua.State, a interface{}) {
 //
 // A proxy is a Lua userdata that wraps a Go value.
 //
-// Pointers are preserved.
+// Proxies have several uses:
 //
-// Structs and arrays need to be passed as pointers to be proxified, otherwise
-// they will be copied as tables.
+// - Type checking in Go function calls, so variable of user-defined type are
+// always profixied. The Go value passed for proxification is not dereferenced
+// in that case.
 //
-// Predeclared scalar types are never proxified as they have no methods.
+// - Reflexive modification of the Go data straight from the Lua code. We only
+// allow this for compound types.
+//
+// - Call methods of user-defined types.
+//
+// Predeclared scalar types are never proxified as they have no methods and we
+// only allow compound types to be set reflexively.
+//
+// Structs are always proxified since their type is always user-defined. If they
+// they are not settable (e.g. not nested, not passed by reference, value of a
+// map), then a copy is passed as a proxy (otherwise setting the fields from Lua
+// would panic). This will not impact the corresponding Go value.
+//
+// Arrays are only proxified if they are settable (so that the user can set the
+// Go value from the Lua side) or if they are of a user-defined type (method
+// calls or function parameters). If the type user-defined but the array is not
+// settable, then a proxy of a copy is made, just as for structs.
 func GoToLuaProxy(L *lua.State, a interface{}) {
 	visited := newVisitor(L)
 	goToLua(L, a, true, visited)
@@ -424,16 +432,27 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 	case reflect.Complex128, reflect.Complex64:
 		makeValueProxy(L, vp, cComplexMeta)
 	case reflect.Array:
-		// It needs be a pointer to be a proxy, otherwise values won't be settable.
-		if proxify && vp.Kind() == reflect.Ptr {
-			makeValueProxy(L, vp, cSliceMeta)
-		} else {
-			// See the case of struct.
-			if vp.Kind() == reflect.Ptr && visited.push(vp) {
+		if proxify {
+			// To check if it is a user-defined type, we compare its type to that of a
+			// new go array with the same length and the same element type.
+			vRawType := reflect.ArrayOf(v.Type().Len(), v.Type().Elem())
+			if vRawType != v.Type() || v.CanSet() {
+				if !v.CanSet() {
+					vp = reflect.New(v.Type())
+					reflect.Copy(vp.Elem(), v)
+					// 'vp' is a pointer of v.Type(), we want the dereferenced type.
+					vp = vp.Elem()
+				}
+				makeValueProxy(L, vp, cSliceMeta)
 				return
 			}
-			copySliceToTable(L, vp, visited)
+			// Else don't proxify.
 		}
+		// See the case of struct.
+		if vp.Kind() == reflect.Ptr && visited.push(vp) {
+			return
+		}
+		copySliceToTable(L, vp, visited)
 	case reflect.Slice:
 		if proxify {
 			makeValueProxy(L, vp, cSliceMeta)
@@ -453,11 +472,13 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 			copyMapToTable(L, v, visited)
 		}
 	case reflect.Struct:
-		if proxify && vp.Kind() == reflect.Ptr {
+		if proxify {
 			if vp.CanInterface() {
 				switch v := vp.Interface().(type) {
 				case error:
+					// TODO: Test proxification of errors.
 					L.PushString(v.Error())
+					return
 				case *LuaObject:
 					// TODO: Move out of 'proxify' condition? LuaObject is meant to be
 					// manipulated from the Go side, it is not useful in Lua.
@@ -468,12 +489,18 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 						// state? Copy across states? Is it always possible?
 						L.PushNil()
 					}
+					return
 				default:
-					makeValueProxy(L, vp, cStructMeta)
 				}
-			} else {
-				makeValueProxy(L, vp, cStructMeta)
 			}
+
+			// Structs are always user-defined types, so it makes sense to always
+			// proxify them.
+			if !v.CanSet() {
+				vp = reflect.New(v.Type())
+				vp.Elem().Set(v)
+			}
+			makeValueProxy(L, vp, cStructMeta)
 		} else {
 			// Use vp instead of v to detect cycles from the very first element, if a pointer.
 			if vp.Kind() == reflect.Ptr && visited.push(vp) {
@@ -870,7 +897,7 @@ func isNewType(t reflect.Type) bool {
 	return pt != t
 }
 
-// Register makes a number of Go values available in Lua code.
+// Register makes a number of Go values available in Lua code as proxies.
 // 'values' is a map of strings to Go values.
 //
 // - If table is non-nil, then create or reuse a global table of that name and
@@ -879,6 +906,8 @@ func isNewType(t reflect.Type) bool {
 // - If table is '' then put the values in the global table (_G).
 //
 // - If table is '*' then assume that the table is already on the stack.
+//
+// See GoToLuaProxy's documentation.
 func Register(L *lua.State, table string, values Map) {
 	pop := true
 	if table == "*" {
