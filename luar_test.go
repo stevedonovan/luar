@@ -1221,7 +1221,7 @@ func TestProxyArray(t *testing.T) {
 		{`#settable`, `2`},
 		{`#defaultType`, `2`},
 		{`#newType`, `2`},
-		{`type(settable)`, `'table<[2]int>'`},
+		{`type(settable)`, `'table<*[2]int>'`},
 		{`type(defaultType)`, `'table'`},
 		{`type(newType)`, `'table<luar.newArray>'`},
 		{`settable[1]`, `14`},
@@ -1510,8 +1510,8 @@ func TestProxyStruct(t *testing.T) {
 		{`it.GetName()`, `'Bob'`},
 		{`GetName(it)`, `'Bob'`},
 		{`GetName(t)`, `'Bob'`},
-		{`type(t)`, `'table<luar.person>'`},
-		{`type(it)`, `'table<luar.person>'`},
+		{`type(t)`, `'table<*luar.person>'`},
+		{`type(it)`, `'table<*luar.person>'`},
 	})
 
 	want := "Chuck"

@@ -166,7 +166,9 @@ func ProxyType(L *lua.State) int {
 	}
 	v, _ := valueOfProxy(L, 1)
 
+	pointerLevel := ""
 	for v.Kind() == reflect.Ptr {
+		pointerLevel += "*"
 		v = v.Elem()
 	}
 
@@ -180,7 +182,7 @@ func ProxyType(L *lua.State) int {
 		prefix = "number"
 	}
 
-	L.PushString(prefix + "<" + v.Type().String() + ">")
+	L.PushString(prefix + "<" + pointerLevel + v.Type().String() + ">")
 	return 1
 }
 
