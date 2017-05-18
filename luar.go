@@ -337,8 +337,7 @@ func GoToLua(L *lua.State, a interface{}) {
 // Proxies have several uses:
 //
 // - Type checking in Go function calls, so variable of user-defined type are
-// always profixied. The Go value passed for proxification is not dereferenced
-// in that case.
+// always profixied.
 //
 // - Reflexive modification of the Go data straight from the Lua code. We only
 // allow this for compound types.
@@ -357,14 +356,21 @@ func GoToLua(L *lua.State, a interface{}) {
 // Go value from the Lua side) or if they are of a user-defined type (method
 // calls or function parameters). If the type user-defined but the array is not
 // settable, then a proxy of a copy is made, just as for structs.
+//
+// Lua cannot dereference pointers and Go can only call methods over one level
+// of indirection at maximum. Thus proxies wrap around values dereferenced up to
+// the last pointer.
+//
+// Go functions can be passed to Lua. If the parameters require several levels
+// of indirections, the arguments will be converted automatically. Since proxies
+// can only wrap around one level of indirection, functions modifying the value
+// of the pointers after one level of indirection will have no effect.
 func GoToLuaProxy(L *lua.State, a interface{}) {
 	visited := newVisitor(L)
 	goToLua(L, a, true, visited)
 	visited.close()
 }
 
-// TODO: Check if we really need multiple pointer levels since pointer methods
-// can be called on non-pointers.
 func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 	var v reflect.Value
 	v, ok := a.(reflect.Value)
@@ -381,9 +387,13 @@ func goToLua(L *lua.State, a interface{}, proxify bool, visited visitor) {
 		v = reflect.ValueOf(v.Interface())
 	}
 
-	// Follow pointers if not proxifying. We save the original pointer Value in case we proxify.
+	// Follow pointers if not proxifying. We save the parent pointer Value in case
+	// we proxify since Lua cannot dereference pointers and has no use of
+	// multiple-level references, while single references are useful for method
+	// calls functions that make use of one level of indirection.
 	vp := v
 	for v.Kind() == reflect.Ptr {
+		vp = v
 		v = v.Elem()
 	}
 
@@ -708,7 +718,9 @@ func copyTableToStruct(L *lua.State, idx int, v reflect.Value, visited map[uintp
 //
 // Nil maps and slices are automatically allocated.
 //
-// Proxies are unwrapped to the Go value, if convertible.
+// Proxies are unwrapped to the Go value, if convertible. If both the proxy and
+// the Go value are pointers, then the Go pointer will be set to the proxy
+// pointer.
 // Userdata that is not a proxy will be converted to a LuaObject if the Go value
 // is an interface or a LuaObject.
 func LuaToGo(L *lua.State, idx int, a interface{}) error {
@@ -737,8 +749,10 @@ func LuaToGo(L *lua.State, idx int, a interface{}) error {
 
 func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect.Value) error {
 	// Derefence 'v' until a non-pointer.
-	// This initializes the values, which will be useless effort if the conversion fails.
-	// This must be done here so that the copyTable* functions can also call luaToGo on pointers.
+	// This initializes the values, which will be useless effort if the conversion
+	// fails.
+	// This must be done here and not in LuaToGo so that the copyTable* functions
+	// can also call luaToGo on pointers.
 	vp := v
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
@@ -783,6 +797,13 @@ func luaToGo(L *lua.State, idx int, v reflect.Value, visited map[uintptr]reflect
 				return nil
 			}
 
+			// If both 'val' and 'v' are pointers, set the 'val' pointer to 'v'.
+			if typ.ConvertibleTo(vp.Type()) {
+				vp.Set(val.Convert(vp.Type()))
+				return nil
+			}
+
+			// Otherwise dereference.
 			for !typ.ConvertibleTo(v.Type()) && val.Kind() == reflect.Ptr {
 				val = val.Elem()
 				typ = typ.Elem()

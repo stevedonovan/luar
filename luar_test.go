@@ -589,6 +589,22 @@ func TestGoToLuaFunction(t *testing.T) {
 		return a.Split()
 	}
 
+	incrMultiref := func(b **myIntA) myIntA {
+		**b = **b + 1
+		return **b
+	}
+	multiref := func() **myIntA {
+		a := myIntA(17)
+		b := &a
+		return &b
+	}
+
+	MyIntA := func(a int) myIntA {
+		return myIntA(a)
+	}
+
+	a := multiref()
+
 	Register(L, "", Map{
 		"multiresult":     multiresult,
 		"sum":             sum,
@@ -601,6 +617,9 @@ func TestGoToLuaFunction(t *testing.T) {
 		"array2pair":      array2pair,
 		"pair2struct":     pair2struct,
 		"struct2pair":     struct2pair,
+		"incrMultiref":    incrMultiref,
+		"MyIntA":          MyIntA,
+		"a":               a,
 	})
 
 	runLuaTest(t, L, []luaTestData{
@@ -611,11 +630,16 @@ func TestGoToLuaFunction(t *testing.T) {
 		{`squares{10, 20}['1']`, `400`}, // Proxy return value.
 		{`IsNilInterface(nil)`, `true`},
 		{`IsNilPointer(nil)`, `true`},
-		{`type(newDirectPerson("Charly"))`, `"table<luar.person>"`},
+		{`type(newDirectPerson("Charly"))`, `"table<*luar.person>"`},
 		{`newDirectPerson("Charly").GetName()`, `"Charly"`},
 		{`{array2pair(pair2array(17, 18))}`, `{17, 18}`},
 		{`{struct2pair(pair2struct(17, 18))}`, `{17, 18}`},
+		{`incrMultiref(a)`, `MyIntA(18)`},
 	})
+
+	if **a != 18 {
+		t.Errorf("got %v, want 18", **a)
+	}
 }
 
 func TestLuaObject(t *testing.T) {
